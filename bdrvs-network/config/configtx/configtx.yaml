@@ -1,0 +1,166 @@
+# =============================================================================
+# B-DRVS Blockchain Network — Channel Configuration (configtx.yaml)
+# Channel:  bdrvschannel
+# Orgs:     MoHMSP | NITAMSP | OrdererMSP
+# Consensus: Solo (prototype) — switch to etcdraft for production
+# =============================================================================
+
+Organizations:
+
+  - &OrdererOrg
+    Name: OrdererMSP
+    ID: OrdererMSP
+    MSPDir: ../../crypto-material/ordererOrganizations/bdrvs.gh/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Writers:
+        Type: Signature
+        Rule: "OR('OrdererMSP.member')"
+      Admins:
+        Type: Signature
+        Rule: "OR('OrdererMSP.admin')"
+    OrdererEndpoints:
+      - orderer.bdrvs.gh:7050
+
+  - &MoH
+    Name: MoHMSP
+    ID: MoHMSP
+    MSPDir: ../../crypto-material/peerOrganizations/moh.bdrvs.gh/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('MoHMSP.admin', 'MoHMSP.peer', 'MoHMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('MoHMSP.admin', 'MoHMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('MoHMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('MoHMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.moh.bdrvs.gh
+        Port: 7051
+
+  - &NITA
+    Name: NITAMSP
+    ID: NITAMSP
+    MSPDir: ../../crypto-material/peerOrganizations/nita.bdrvs.gh/msp
+    Policies:
+      Readers:
+        Type: Signature
+        Rule: "OR('NITAMSP.admin', 'NITAMSP.peer', 'NITAMSP.client')"
+      Writers:
+        Type: Signature
+        Rule: "OR('NITAMSP.admin', 'NITAMSP.client')"
+      Admins:
+        Type: Signature
+        Rule: "OR('NITAMSP.admin')"
+      Endorsement:
+        Type: Signature
+        Rule: "OR('NITAMSP.peer')"
+    AnchorPeers:
+      - Host: peer0.nita.bdrvs.gh
+        Port: 9051
+
+# ─── Capabilities ──────────────────────────────────────────────────────────────
+Capabilities:
+  Channel: &ChannelCapabilities
+    V2_0: true
+  Orderer: &OrdererCapabilities
+    V2_0: true
+  Application: &ApplicationCapabilities
+    V2_5: true
+
+# ─── Application defaults ──────────────────────────────────────────────────────
+Application: &ApplicationDefaults
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "ANY Admins"
+    LifecycleEndorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+    Endorsement:
+      Type: ImplicitMeta
+      Rule: "MAJORITY Endorsement"
+  Capabilities:
+    <<: *ApplicationCapabilities
+
+# ─── Orderer defaults ──────────────────────────────────────────────────────────
+Orderer: &OrdererDefaults
+  OrdererType: solo          # Use etcdraft for production HA deployment
+  Addresses:
+    - orderer.bdrvs.gh:7050
+  BatchTimeout: 2s
+  BatchSize:
+    MaxMessageCount: 10
+    AbsoluteMaxBytes: 99 MB
+    PreferredMaxBytes: 512 KB
+  Organizations:
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "ANY Admins"
+    BlockValidation:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+
+# ─── Channel defaults ──────────────────────────────────────────────────────────
+Channel: &ChannelDefaults
+  Policies:
+    Readers:
+      Type: ImplicitMeta
+      Rule: "ANY Readers"
+    Writers:
+      Type: ImplicitMeta
+      Rule: "ANY Writers"
+    Admins:
+      Type: ImplicitMeta
+      Rule: "ANY Admins"
+  Capabilities:
+    <<: *ChannelCapabilities
+
+# ─── Profiles ──────────────────────────────────────────────────────────────────
+Profiles:
+
+  # Genesis block for the system channel / orderer
+  BDRVSGenesis:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      Organizations:
+        - *OrdererOrg
+      Capabilities: *OrdererCapabilities
+    Consortiums:
+      BDRVSConsortium:
+        Organizations:
+          - *MoH
+          - *NITA
+
+  # Application channel — bdrvschannel
+  BDRVSChannel:
+    Consortium: BDRVSConsortium
+    <<: *ChannelDefaults
+    Application:
+      <<: *ApplicationDefaults
+      Organizations:
+        - *MoH
+        - *NITA
+      Capabilities: *ApplicationCapabilities

@@ -1,0 +1,31 @@
+# =============================================================================
+# B-DRVS Blockchain Network — Cryptogen Configuration
+# Organisations: MoH (Ministry of Health) | NITA (National IT Agency)
+# Domain:        bdrvs.gh  (simulated; map to localhost in /etc/hosts)
+# =============================================================================
+
+OrdererOrgs:
+  - Name: Orderer
+    Domain: bdrvs.gh
+    EnableNodeOUs: true
+    Specs:
+      - Hostname: orderer          # orderer.bdrvs.gh
+
+PeerOrgs:
+  # ── Ministry of Health ───────────────────────────────────────────────────────
+  - Name: MoH
+    Domain: moh.bdrvs.gh
+    EnableNodeOUs: true            # enables peer/client/admin OUs for fine-grained MSP
+    Template:
+      Count: 1                     # peer0.moh.bdrvs.gh
+    Users:
+      Count: 1                     # User1@moh.bdrvs.gh (for SDK calls); Admin auto-generated
+
+  # ── National Information Technology Agency ───────────────────────────────────
+  - Name: NITA
+    Domain: nita.bdrvs.gh
+    EnableNodeOUs: true
+    Template:
+      Count: 1                     # peer0.nita.bdrvs.gh
+    Users:
+      Count: 1                     # User1@nita.bdrvs.gh
