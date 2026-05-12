@@ -21,8 +21,39 @@ B-DRVS replaces manual audits with a three-tier automated system:
 - A React.js dashboard that gives regulators a real-time compliance monitoring interface
 
 ## System Architecture
+
+The system is structured across three tiers:
+
+**Tier 1 — Probing Agent**
+A Python script installed on the vendor health server. Collects the server's
+public IP address and RTT latency, signs the data cryptographically using 
+ECDSA, and transmits it to the blockchain.
+
+**Tier 2 — Blockchain & Smart Contracts**
+A permissioned Hyperledger Fabric network with peer nodes operated by the 
+Ministry of Health and NITA. A Go-based smart contract automatically validates 
+each submission against Ghana's IP whitelist and RTT threshold, then records 
+a permanent Compliant or Sovereignty Violation decision on the ledger.
+
+**Tier 3 — Administrative Dashboard**
+A React.js web application that translates blockchain records into a real-time 
+compliance monitoring interface for Ministry of Health regulators. Displays 
+server locations on a map, triggers violation alerts, and exports tamper-proof 
+evidence reports.
+
 ## Project Structure
+
+| Folder | Tier | Description |
+|--------|------|-------------|
+| probing-agent/ | Tier 1 | Python probing agent for metadata collection and signing |
+| chaincode/ | Tier 2 | Go smart contract for automated residency validation |
+| fabric-network/ | Tier 2 | Hyperledger Fabric network configuration and deployment |
+| api-gateway/ | Tier 2/3 | Node.js REST API gateway connecting all system components |
+| dashboard/ | Tier 3 | React.js administrative dashboard for regulators |
+| docs/ | — | Project report, diagrams, and documentation |
+
 ## Tech Stack
+
 | Component | Technology |
 |-----------|------------|
 | Probing Agent | Python 3.11 |
@@ -35,6 +66,7 @@ B-DRVS replaces manual audits with a three-tier automated system:
 | OS | Parrot OS (Debian-based) |
 
 ## Team
+
 | Name | Student ID | Responsibility |
 |------|------------|----------------|
 | Ahinakwa Eugene Nii Okai | FOE.41.018.016.22 | — |
@@ -49,32 +81,18 @@ Department of Cybersecurity and Information Systems
 University of Mines and Technology, Tarkwa
 
 ## Implementation Progress
-### ✅ Phase 1 — Environment & Blockchain Network Setup
-- Docker installed and running
-- Hyperledger Fabric 2.x binaries downloaded
-- MoH peer node configured
-- NITA peer node configured
-- Orderer configured
-- Channel created
-- Both organisations joined the channel
 
-### 🔄 Phase 2 — Smart Contract (Go Chaincode)
-- In progress
-
-### ⏳ Phase 3 — Python Probing Agent
-- Pending
-
-### ⏳ Phase 4 — REST API Gateway
-- Pending
-
-### ⏳ Phase 5 — React Dashboard
-- Pending
-
-### ⏳ Phase 6 — Testing & Simulation
-- Pending
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Environment and Blockchain Network Setup | ✅ Complete |
+| Phase 2 | Smart Contract — Go Chaincode | 🔄 In Progress |
+| Phase 3 | Python Probing Agent | ⏳ Pending |
+| Phase 4 | REST API Gateway | ⏳ Pending |
+| Phase 5 | React.js Administrative Dashboard | ⏳ Pending |
+| Phase 6 | Testing and Simulation | ⏳ Pending |
 
 ## How to Run
-*Setup instructions will be added as each phase is completed.*
+Setup and deployment instructions will be added as each phase is completed.
 
 ## Institution
 University of Mines and Technology (UMaT), Tarkwa, Ghana
