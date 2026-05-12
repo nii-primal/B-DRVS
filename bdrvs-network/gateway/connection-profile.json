@@ -1,0 +1,26 @@
+{
+  "name": "bdrvs-network",
+  "version": "1.0.0",
+  "client": {
+    "organization": "MoH",
+    "connection": { "timeout": { "peer": { "endorser": "300" } } }
+  },
+  "organizations": {
+    "MoH": {
+      "mspid": "MoHMSP",
+      "peers": ["peer0.moh.bdrvs.gh"]
+    }
+  },
+  "peers": {
+    "peer0.moh.bdrvs.gh": {
+      "url": "grpcs://localhost:7051",
+      "tlsCACerts": {
+        "path": "/home/nii/B-DRVS/bdrvs-network/crypto-material/peerOrganizations/moh.bdrvs.gh/peers/peer0.moh.bdrvs.gh/tls/ca.crt"
+      },
+      "grpcOptions": {
+        "ssl-target-name-override": "peer0.moh.bdrvs.gh",
+        "hostnameOverride": "peer0.moh.bdrvs.gh"
+      }
+    }
+  }
+}

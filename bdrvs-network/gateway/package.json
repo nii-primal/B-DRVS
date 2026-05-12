@@ -1,0 +1,18 @@
+{
+  "name": "bdrvs-gateway",
+  "version": "1.0.0",
+  "description": "B-DRVS REST API Gateway",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "fabric-network": "2.2.20",
+    "fabric-ca-client": "2.2.20",
+    "dotenv": "16.3.1",
+    "express": "4.18.2",
+    "express-validator": "7.0.1",
+    "morgan": "1.10.0",
+    "winston": "3.11.0"
+  }
+}
