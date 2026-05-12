@@ -82,14 +82,14 @@ University of Mines and Technology, Tarkwa
 
 ## Implementation Progress
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Environment and Blockchain Network Setup | ✅ Complete |
-| Phase 2 | Smart Contract — Go Chaincode | 🔄 In Progress |
-| Phase 3 | Python Probing Agent | ⏳ Pending |
-| Phase 4 | REST API Gateway | ⏳ Pending |
-| Phase 5 | React.js Administrative Dashboard | ⏳ Pending |
-| Phase 6 | Testing and Simulation | ⏳ Pending |
+| Phase | Description | Status | Date | Notes |
+|-------|-------------|--------|------|-------|
+| Phase 1 | Environment and Blockchain Network Setup | ✅ Complete | 11 May 2026 | Docker, Fabric network, MoH and NITA nodes configured |
+| Phase 2 | Smart Contract — Go Chaincode | 🔄 Deployed | 12 May 2026 | Validation logic written and deployed — awaiting Probing Agent integration |
+| Phase 3 | Python Probing Agent | ⏳ Pending | — | — |
+| Phase 4 | REST API Gateway | ⏳ Pending | — | — |
+| Phase 5 | React.js Administrative Dashboard | ⏳ Pending | — | — |
+| Phase 6 | Testing and Simulation | ⏳ Pending | — | — |
 
 ## How to Run
 Setup and deployment instructions will be added as each phase is completed.
