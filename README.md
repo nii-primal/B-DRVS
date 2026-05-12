@@ -85,11 +85,19 @@ University of Mines and Technology, Tarkwa
 | Phase | Description | Status | Date | Notes |
 |-------|-------------|--------|------|-------|
 | Phase 1 | Environment and Blockchain Network Setup | ✅ Complete | 11 May 2026 | Docker, Fabric network, MoH and NITA nodes configured |
-| Phase 2 | Smart Contract — Go Chaincode | 🔄 Deployed | 12 May 2026 | Validation logic written and deployed — awaiting Probing Agent integration |
-| Phase 3 | Python Probing Agent | 🔄 Deployed | 12 May 2026 | ECDSA signing, IP collection, RTT measurement complete — awaiting REST API gateway |
-| Phase 4 | REST API Gateway | ⏳ Pending | — | — |
+| Phase 2 | Smart Contract — Go Chaincode | ✅ Complete | 12 May 2026 | Validation logic written and deployed — integrated via Phase 4 |
+| Phase 3 | Python Probing Agent | ✅ Complete | 12 May 2026 | ECDSA signing, IP collection, RTT measurement — integrated via Phase 4 |
+| Phase 4 | REST API Gateway | ✅ Complete | 12 May 2026 | 8 endpoints built — first live end-to-end test passed with SOVEREIGNTY_VIOLATION recorded on ledger |
 | Phase 5 | React.js Administrative Dashboard | ⏳ Pending | — | — |
 | Phase 6 | Testing and Simulation | ⏳ Pending | — | — |
+
+## First Live End-to-End Test
+On 12 May 2026, the system ran its first complete verification cycle:
+- Server `LHIMS-KORLE-BU-01` was registered on the blockchain with its ECDSA public key
+- The Probing Agent collected a real public IP, measured RTT, and signed the payload
+- The REST API Gateway submitted the signed payload to the smart contract
+- The smart contract validated the data and wrote a permanent `SOVEREIGNTY_VIOLATION` 
+  record to the immutable ledger
 
 ## How to Run
 Setup and deployment instructions will be added as each phase is completed.
