@@ -11,7 +11,7 @@ OWNER_ORG = "Lightwave Technologies"  # Vendor organisation name
 # The government-controlled reference point used for RTT measurement.
 # In production this is NITA's data centre in Accra.
 # For local testing, use the IP of any container on the same Docker network.
-VERIFIER_HOST = "peer0.nita.bdrvs.gh"   # hostname or IP
+VERIFIER_HOST = "localhost"   # hostname or IP
 VERIFIER_PORT = 9051                     # port to probe for RTT measurement
 VERIFIER_PING_COUNT = 5                  # number of RTT samples to average
 
