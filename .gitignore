@@ -1,1 +1,21 @@
-crypto-material/
+# Fabric generated material
+bdrvs-network/crypto-material/
+bdrvs-network/channel-artifacts/
+
+# Chaincode build artifacts
+bdrvs-network/*.tar.gz
+
+# Node
+bdrvs-network/gateway/node_modules/
+bdrvs-network/gateway/logs/
+bdrvs-network/gateway/.env
+
+# Python
+bdrvs-network/probing-agent/__pycache__/
+bdrvs-network/probing-agent/keys/
+bdrvs-network/probing-agent/logs/
+*.pyc
+*.pem
+
+# Misc
+.DS_Store
