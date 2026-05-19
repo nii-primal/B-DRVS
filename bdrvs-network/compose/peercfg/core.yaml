@@ -143,6 +143,10 @@ peer:
       gatewayService: 500
 
 chaincode:
+  builder: hyperledger/fabric-ccenv:2.5
+  golang:
+    runtime: hyperledger/fabric-baseos:2.5
+    dynamicLink: false
   pull: false
   externalBuilders: []
   installTimeout: 300s

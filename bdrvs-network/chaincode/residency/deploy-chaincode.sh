@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-NETWORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NETWORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHAINCODE_DIR="${NETWORK_DIR}/chaincode/residency"
 CHANNEL="bdrvschannel"
 CC_NAME="residency"
