@@ -1,0 +1,22 @@
+.violations-page{display:flex;flex-direction:column;gap:20px}
+.page-banner{display:flex;align-items:center;gap:16px;padding:20px 24px;border:1px solid}
+.violation-banner{background:var(--gh-red-dim);border-color:var(--gh-red);border-left:4px solid var(--gh-red)}
+.banner-icon{font-size:28px;color:var(--gh-red)}
+.banner-title{font-family:var(--font-cond);font-size:16px;font-weight:700;color:var(--gh-red);letter-spacing:.04em}
+.banner-sub{font-size:13px;color:var(--text-secondary);margin-top:2px}
+.card{background:var(--white);border:1px solid var(--border-light)}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border-light)}
+.card-title{font-family:var(--font-cond);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.filter-input{padding:6px 12px;border:1px solid var(--border-light);font-family:var(--font-mono);font-size:12px;width:280px;color:var(--text-primary);outline:none}
+.filter-input:focus{border-color:var(--gh-green)}
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--text-muted);text-transform:uppercase;padding:10px 16px;text-align:left;border-bottom:1px solid var(--border-light);background:var(--surface);white-space:nowrap}
+.data-table td{padding:11px 16px;font-size:12px;border-bottom:1px solid var(--surface-2);vertical-align:middle}
+.data-table tr.violation-row td{background:rgba(206,17,38,.04)}
+.data-table tr.violation-row:hover td{background:var(--gh-red-dim)}
+.small-text{font-size:11px}.server-cell{font-weight:600}.reason-cell{font-size:12px;max-width:220px}
+.hash-cell{color:var(--text-muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.detail-btn{background:none;border:1px solid var(--border-light);padding:4px 10px;font-size:11px;font-weight:600;color:var(--gh-green);letter-spacing:.03em;white-space:nowrap}
+.detail-btn:hover{background:var(--gh-green-dim);border-color:var(--gh-green)}
+.empty-state{display:flex;flex-direction:column;align-items:center;padding:60px;color:var(--text-muted);font-size:13px;gap:10px}
+.empty-icon{font-size:32px}

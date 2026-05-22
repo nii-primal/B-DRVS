@@ -1,0 +1,23 @@
+.layout{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:var(--sidebar-w);min-width:var(--sidebar-w);background:var(--navy);display:flex;flex-direction:column;border-right:1px solid var(--border);overflow:hidden}
+.sidebar-brand{display:flex;align-items:center;gap:12px;padding:20px 16px;border-bottom:1px solid var(--border)}
+.brand-shield{width:36px;height:36px;background:var(--gh-green);display:flex;align-items:center;justify-content:center;font-family:var(--font-cond);font-size:18px;font-weight:700;color:var(--white);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);flex-shrink:0}
+.brand-title{font-family:var(--font-cond);font-size:16px;font-weight:700;color:var(--white);letter-spacing:.06em}
+.brand-sub{font-size:10px;color:var(--text-muted);letter-spacing:.04em;margin-top:1px}
+.sidebar-nav{flex:1;padding:16px 0;display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 16px;color:#8A9BB0;font-size:13px;font-weight:500;letter-spacing:.02em;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{color:var(--text-inv);background:rgba(255,255,255,.05)}
+.nav-item.active{color:var(--gh-gold);background:rgba(252,209,22,.08);border-left-color:var(--gh-gold)}
+.nav-icon{width:18px;text-align:center;font-size:14px}
+.sidebar-footer{padding:16px;border-top:1px solid var(--border)}
+.footer-label{font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:.03em;line-height:1.8}
+.footer-chain,.footer-channel{font-family:var(--font-mono);font-size:10px;color:var(--gh-green);margin-top:6px}
+.main-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:var(--header-h);min-height:var(--header-h);background:var(--white);border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+.topbar-path{font-family:var(--font-cond);font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--text-primary);text-transform:uppercase}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%}
+.status-dot.green{background:var(--gh-green);box-shadow:0 0 6px var(--gh-green)}
+.status-dot.red{background:var(--gh-red);box-shadow:0 0 6px var(--gh-red)}
+.status-text{font-size:12px;color:var(--text-secondary);font-family:var(--font-mono)}
+.page-content{flex:1;overflow-y:auto;padding:28px}

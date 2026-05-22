@@ -1,179 +1,138 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
-import { getStatus, getHistory, getStats, getConfig } from '../api/client.js';
-import StatusBadge from '../components/StatusBadge.jsx';
-import LatencyChart from '../components/LatencyChart.jsx';
-import ComplianceTimeline from '../components/ComplianceTimeline.jsx';
-import EvidenceExport from '../components/EvidenceExport.jsx';
-import { fmtDateTime, fmtRelative, fmtRtt, shortHash } from '../utils/format.js';
+import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts'
+import { api, fmtTime, fmtRtt, statusClass } from '../utils/api'
+import './ServerDetail.css'
 
 export default function ServerDetail() {
-  const { id } = useParams();
-  const [server, setServer] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [config, setConfig] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const [status,  setStatus]  = useState(null)
+  const [history, setHistory] = useState([])
+  const [stats,   setStats]   = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [exporting, setExp]   = useState(false)
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [s, h, st, cfg] = await Promise.all([
-          getStatus(id).catch(() => null),
-          getHistory(id).catch(() => null),
-          getStats(id).catch(() => null),
-          getConfig().catch(() => null),
-        ]);
-        if (cancelled) return;
-        setServer(s ? { serverID: id, ...s } : { serverID: id });
-        const hArr = h?.history || (Array.isArray(h) ? h : []);
-        setHistory(hArr);
-        setStats(st);
-        setConfig(cfg);
-      } catch (e) {
-        if (!cancelled) setError(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    const poll = setInterval(load, 20000);
-    return () => {
-      cancelled = true;
-      clearInterval(poll);
-    };
-  }, [id]);
+  useEffect(()=>{ fetchAll(); const t=setInterval(fetchAll,30000); return ()=>clearInterval(t) },[id])
 
-  const threshold = config?.rttThreshold ?? config?.RTT_THRESHOLD ?? 50;
+  async function fetchAll(){
+    try{
+      const [sR,hR,stR]=await Promise.allSettled([api.status(id),api.history(id),api.stats(id)])
+      if(sR.status==='fulfilled')  setStatus(sR.value.data)
+      if(hR.status==='fulfilled')  setHistory(hR.value.data||[])
+      if(stR.status==='fulfilled') setStats(stR.value.data)
+    }finally{ setLoading(false) }
+  }
 
-  return (
-    <>
-      <div className="page-head">
-        <div>
-          <Link to="/" className="eyebrow" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <ChevronLeft size={12} />
-            Overview
-          </Link>
-          <h1 style={{ marginTop: '0.5rem', fontFamily: 'var(--font-mono)', fontSize: '1.5rem' }}>{id}</h1>
+  const chartData=[...history].filter(r=>r.rttMs!=null).slice(-24).map((r,i)=>({
+    idx:i+1, rtt:Number(r.rttMs).toFixed(2)*1, status:r.status,
+    time:r.timestamp?new Date(r.timestamp).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}):String(i),
+  }))
+
+  function handleExport(){
+    setExp(true)
+    const rows=history.map(r=>`${r.recordID||''}\t${r.timestamp||''}\t${r.publicIP||''}\t${r.rttMs||''}\t${r.status||''}\t${r.violationReason||''}\t${r.payloadHash||''}`)
+    const tsv=['Record ID\tTimestamp (UTC)\tPublic IP\tRTT (ms)\tStatus\tViolation Reason\tPayload Hash',...rows].join('\n')
+    const blob=new Blob([tsv],{type:'text/plain'})
+    const url=URL.createObjectURL(blob)
+    const a=document.createElement('a'); a.href=url; a.download=`BDRVS_Evidence_${id}_${new Date().toISOString().split('T')[0]}.tsv`; a.click()
+    URL.revokeObjectURL(url); setExp(false)
+  }
+
+  if(loading) return <div style={{display:'flex',justifyContent:'center',padding:'80px'}}><div className="spinner"/></div>
+  const isV=status?.currentStatus?.toUpperCase().includes('VIOLATION')
+
+  return(
+    <div className="server-detail fade-in">
+      <div className="detail-header">
+        <button className="back-btn" onClick={()=>navigate('/')}>← Back</button>
+        <div className="detail-id-block">
+          <div className="detail-id mono">{id}</div>
+          <span className={`tag ${statusClass(status?.currentStatus)}`}>{status?.currentStatus||'UNKNOWN'}</span>
         </div>
-        <div className="page-head__meta">
-          <StatusBadge status={server?.status} />
-          <EvidenceExport server={server} history={history} stats={stats} />
+        <button className={`export-btn${exporting?' loading':''}`} onClick={handleExport} disabled={exporting}>
+          {exporting?'Preparing…':'↓ Export Evidence Report'}
+        </button>
+      </div>
+
+      {isV&&status?.violationReason&&(
+        <div className="violation-alert">
+          <span className="alert-icon">⚠</span>
+          <span><strong>SOVEREIGNTY VIOLATION DETECTED:</strong> {status.violationReason}</span>
+        </div>
+      )}
+
+      <div className="stats-strip">
+        <Item label="Current IP"    value={status?.publicIP||'—'} mono/>
+        <Item label="RTT"           value={fmtRtt(status?.rttMs)} mono/>
+        <Item label="IP Status"     value={status?.ipStatus||'—'} mono/>
+        <Item label="Last Check-in" value={fmtTime(status?.timestamp)}/>
+        {stats&&<>
+          <Item label="Total Records"   value={stats.totalRecords}/>
+          <Item label="Violations"      value={stats.violations} accent="red"/>
+          <Item label="Compliance Rate" value={stats.complianceRate?`${stats.complianceRate}%`:'—'} accent="green"/>
+        </>}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">RTT Latency Trend (Last {chartData.length} Records)</span>
+          <span className="tag tag-warning">50 ms Domestic Threshold</span>
+        </div>
+        <div className="chart-wrap">
+          {chartData.length===0
+            ?<div className="empty-state">No latency data available</div>
+            :<ResponsiveContainer width="100%" height={240}>
+              <LineChart data={chartData} margin={{top:16,right:24,left:0,bottom:0}}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EAECEF"/>
+                <XAxis dataKey="time" tick={{fontFamily:'IBM Plex Mono',fontSize:10,fill:'#8A97A8'}} interval="preserveStartEnd"/>
+                <YAxis tick={{fontFamily:'IBM Plex Mono',fontSize:10,fill:'#8A97A8'}} unit=" ms" width={60}/>
+                <Tooltip contentStyle={{fontFamily:'IBM Plex Mono',fontSize:11,border:'1px solid #D4DDE6',background:'#fff'}} formatter={v=>[`${v} ms`,'RTT']}/>
+                <ReferenceLine y={50} stroke="#FCD116" strokeDasharray="6 4" strokeWidth={2} label={{value:'50ms',fill:'#8a6000',fontSize:10,fontFamily:'IBM Plex Mono',position:'right'}}/>
+                <Line type="monotone" dataKey="rtt" stroke="#006B3F" strokeWidth={2}
+                  dot={d=><circle key={d.key} cx={d.cx} cy={d.cy} r={4} fill={d.payload.status?.includes('VIOLATION')?'#CE1126':'#006B3F'} stroke="#fff" strokeWidth={1.5}/>}
+                  activeDot={{r:6,fill:'#006B3F'}}/>
+              </LineChart>
+            </ResponsiveContainer>
+          }
         </div>
       </div>
 
-      {loading && <div className="loading-rule" style={{ marginBottom: '1.5rem' }} />}
-      {error && <div className="error-box">{error}</div>}
-
-      <div className="detail-summary" style={{ marginBottom: '2rem' }}>
-        <div>
-          <div className="eyebrow">Latest IP</div>
-          <strong>{server?.ipAddress || '—'}</strong>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">Immutable Audit Trail</span>
+          <span className="tag tag-neutral mono">{history.length} records on-chain</span>
         </div>
-        <div>
-          <div className="eyebrow">Latest RTT</div>
-          <strong>{fmtRtt(server?.rtt)}</strong>
-        </div>
-        <div>
-          <div className="eyebrow">Last check-in</div>
-          <strong>{fmtRelative(server?.timestamp)}</strong>
-        </div>
-        <div>
-          <div className="eyebrow">Total check-ins</div>
-          <strong>{stats?.totalCheckins ?? history.length}</strong>
-        </div>
-        <div>
-          <div className="eyebrow">Compliance rate</div>
-          <strong>
-            {stats?.complianceRate != null
-              ? `${Number(stats.complianceRate).toFixed(1)} %`
-              : history.length
-                ? `${(
-                    (history.filter((h) => h.status === 'COMPLIANT').length /
-                      history.length) *
-                    100
-                  ).toFixed(1)} %`
-                : '—'}
-          </strong>
-        </div>
-        <div>
-          <div className="eyebrow">Violations recorded</div>
-          <strong style={{ color: '#ce1126' }}>
-            {stats?.violationCount ?? history.filter((h) => h.status !== 'COMPLIANT').length}
-          </strong>
+        <div className="table-scroll">
+          <table className="data-table audit-table">
+            <thead><tr><th>#</th><th>TIMESTAMP (UTC)</th><th>PUBLIC IP</th><th>RTT</th><th>IP STATUS</th><th>STATUS</th><th>PAYLOAD HASH</th></tr></thead>
+            <tbody>
+              {history.length===0
+                ?<tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-muted)',padding:24}}>No records found</td></tr>
+                :[...history].reverse().map((r,i)=>(
+                  <tr key={i} className={r.status?.includes('VIOLATION')?'row-violation':''}>
+                    <td className="mono" style={{color:'var(--text-muted)'}}>{history.length-i}</td>
+                    <td className="mono">{fmtTime(r.timestamp)}</td>
+                    <td className="mono">{r.publicIP||'—'}</td>
+                    <td className="mono">{fmtRtt(r.rttMs)}</td>
+                    <td><span className={`tag ${r.ipStatus==='FOREIGN'?'tag-violation':r.ipStatus==='GHANAIAN'?'tag-compliant':'tag-neutral'}`}>{r.ipStatus||'—'}</span></td>
+                    <td><span className={`tag ${statusClass(r.status)}`}>{r.status||'—'}</span></td>
+                    <td className="mono hash-cell" title={r.payloadHash}>{r.payloadHash?r.payloadHash.slice(0,20)+'…':'—'}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
         </div>
       </div>
-
-      <div className="detail-grid">
-        <section className="panel">
-          <div className="panel__head">
-            <span className="panel__title">Round-Trip Time trend</span>
-            <span className="eyebrow">Threshold {threshold} ms</span>
-          </div>
-          <div className="panel__body">
-            <LatencyChart history={history} threshold={threshold} />
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel__head">
-            <span className="panel__title">Compliance timeline</span>
-            <span className="eyebrow">Hourly</span>
-          </div>
-          <div className="panel__body">
-            <ComplianceTimeline history={history} />
-          </div>
-        </section>
-      </div>
-
-      <section className="panel" style={{ marginTop: '2rem' }}>
-        <div className="panel__head">
-          <span className="panel__title">Audit trail</span>
-          <span className="eyebrow">{history.length} records</span>
-        </div>
-        <div className="panel__body dense">
-          {history.length ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Status</th>
-                  <th>IP</th>
-                  <th>RTT</th>
-                  <th>Payload hash</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...history]
-                  .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                  .map((h, idx) => (
-                    <tr key={`${h.timestamp}-${idx}`}>
-                      <td className="col-mono">{fmtDateTime(h.timestamp)}</td>
-                      <td>
-                        <StatusBadge status={h.status} compact />
-                      </td>
-                      <td className="col-mono">{h.ipAddress || '—'}</td>
-                      <td className="col-mono">{fmtRtt(h.rtt)}</td>
-                      <td className="col-mono" title={h.payloadHash}>
-                        {shortHash(h.payloadHash, 10, 8)}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-state">
-              <h3>No check-in records</h3>
-              <p>The probing agent has not yet submitted any check-ins for this server.</p>
-            </div>
-          )}
-        </div>
-      </section>
-    </>
-  );
+    </div>
+  )
+}
+function Item({label,value,mono,accent}){
+  return(
+    <div className={`strip-item${accent?` strip-${accent}`:''}`}>
+      <div className="strip-label">{label}</div>
+      <div className={`strip-value${mono?' mono':''}`}>{value}</div>
+    </div>
+  )
 }

@@ -1,145 +1,71 @@
-import { useState } from 'react';
-import { registerServer } from '../api/client.js';
-import { Link } from 'react-router-dom';
+import { useState } from 'react'
+import { api } from '../utils/api'
+import './Register.css'
 
 export default function Register() {
-  const [form, setForm] = useState({
-    serverID: '',
-    publicKey: '',
-    institution: '',
-    description: '',
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [form, setForm] = useState({ serverID:'', publicKey:'', operator:'', facility:'', city:'', lat:'', lng:'' })
+  const [state, setState] = useState('idle')
+  const [msg, setMsg] = useState('')
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}))
 
-  const onChange = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+  async function handleSubmit(){
+    const req=['serverID','publicKey','operator','facility']
+    for(const k of req){ if(!form[k].trim()){ setMsg(`"${k}" is required.`); setState('error'); return } }
+    setState('loading')
+    try{
+      const res=await api.register({ serverID:form.serverID.trim(), publicKey:form.publicKey.trim(), operator:form.operator.trim(), facility:form.facility.trim(), city:form.city.trim(), latitude:form.lat?parseFloat(form.lat):undefined, longitude:form.lng?parseFloat(form.lng):undefined })
+      setMsg(res.data?.message||'Server registered successfully.')
+      setState('success')
+      setForm({ serverID:'', publicKey:'', operator:'', facility:'', city:'', lat:'', lng:'' })
+    }catch(e){ setMsg(e.response?.data?.error||e.message||'Registration failed.'); setState('error') }
+  }
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    setResult(null);
-    try {
-      const payload = {
-        serverID: form.serverID.trim(),
-        publicKey: form.publicKey.trim(),
-        institution: form.institution.trim(),
-        description: form.description.trim(),
-      };
-      const res = await registerServer(payload);
-      setResult({ ...res, serverID: payload.serverID });
-      // Persist locally so it appears in the overview even if the gateway
-      // has no GET /api/servers endpoint.
-      try {
-        const list = JSON.parse(localStorage.getItem('bdrvs.knownServers') || '[]');
-        if (!list.includes(payload.serverID)) {
-          list.push(payload.serverID);
-          localStorage.setItem('bdrvs.knownServers', JSON.stringify(list));
-        }
-      } catch {
-        /* ignore */
-      }
-      setForm({ serverID: '', publicKey: '', institution: '', description: '' });
-    } catch (err) {
-      setError(err.message || String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="page-head">
+  return(
+    <div className="register-page fade-in">
+      <div className="page-banner info-banner">
+        <div className="banner-icon">+</div>
         <div>
-          <span className="eyebrow">Tier 2 · On-chain identity</span>
-          <h1 style={{ marginTop: '0.5rem' }}>Register health server</h1>
+          <div className="banner-title">Register Health Server</div>
+          <div className="banner-sub">Enrol a new vendor-hosted health server on the B-DRVS ledger for continuous residency monitoring.</div>
         </div>
       </div>
-
-      <section className="panel" style={{ maxWidth: 720 }}>
-        <div className="panel__head">
-          <span className="panel__title">Server registration</span>
-          <span className="eyebrow">POST /api/register</span>
+      <div className="reg-grid">
+        <div className="card reg-card">
+          <div className="card-header"><span className="card-title">Server Identity</span></div>
+          <div className="form-body">
+            <Field label="Server ID *" hint="e.g. LHIMS-RIDGE-01"><input className="field-input mono" placeholder="LHIMS-FACILITY-XX" value={form.serverID} onChange={e=>set('serverID',e.target.value)}/></Field>
+            <Field label="Operator / Vendor *" hint="Name of the deploying vendor"><input className="field-input" placeholder="e.g. Lightwave Technologies Ltd." value={form.operator} onChange={e=>set('operator',e.target.value)}/></Field>
+            <Field label="Facility Name *" hint="Full name of the health facility"><input className="field-input" placeholder="e.g. Ridge Hospital, Accra" value={form.facility} onChange={e=>set('facility',e.target.value)}/></Field>
+            <div className="field-row">
+              <Field label="City / Region" hint="Optional"><input className="field-input" placeholder="e.g. Accra" value={form.city} onChange={e=>set('city',e.target.value)}/></Field>
+              <Field label="Latitude" hint="For map"><input className="field-input mono" placeholder="5.6037" type="number" value={form.lat} onChange={e=>set('lat',e.target.value)}/></Field>
+              <Field label="Longitude" hint="For map"><input className="field-input mono" placeholder="-0.1870" type="number" value={form.lng} onChange={e=>set('lng',e.target.value)}/></Field>
+            </div>
+          </div>
         </div>
-        <div className="panel__body">
-          {result && (
-            <div className="success-box">
-              Server <strong>{result.serverID}</strong> registered. Its public key is now
-              recognised by the residency chaincode and check-ins may begin.{' '}
-              <Link to={`/servers/${encodeURIComponent(result.serverID)}`}>Open record →</Link>
+        <div className="card reg-card">
+          <div className="card-header"><span className="card-title">ECDSA Public Key</span></div>
+          <div className="form-body">
+            <Field label="Agent Public Key (PEM) *" hint="Paste the ECDSA P-256 public key generated by the probing agent">
+              <textarea className="field-textarea mono" rows={8} placeholder={"-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQY...\n-----END PUBLIC KEY-----"} value={form.publicKey} onChange={e=>set('publicKey',e.target.value)}/>
+            </Field>
+            <div className="key-note">
+              <span className="note-icon">ℹ</span>
+              The public key is stored on the blockchain and used by the smart contract to verify all signed check-in payloads from this server.
             </div>
-          )}
-          {error && <div className="error-box">{error}</div>}
-
-          <form onSubmit={onSubmit}>
-            <div className="form-row">
-              <label htmlFor="serverID">Server identifier</label>
-              <input
-                id="serverID"
-                value={form.serverID}
-                onChange={onChange('serverID')}
-                placeholder="LHIMS-KORLE-BU-02"
-                required
-              />
-            </div>
-
-            <div className="form-row">
-              <label htmlFor="institution">Institution</label>
-              <input
-                id="institution"
-                value={form.institution}
-                onChange={onChange('institution')}
-                placeholder="Korle-Bu Teaching Hospital"
-              />
-            </div>
-
-            <div className="form-row">
-              <label htmlFor="description">Description (optional)</label>
-              <input
-                id="description"
-                value={form.description}
-                onChange={onChange('description')}
-                placeholder="LHIMS production node — patient records"
-              />
-            </div>
-
-            <div className="form-row">
-              <label htmlFor="publicKey">ECDSA P-256 public key (PEM)</label>
-              <textarea
-                id="publicKey"
-                value={form.publicKey}
-                onChange={onChange('publicKey')}
-                placeholder={
-                  '-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE…\n-----END PUBLIC KEY-----'
-                }
-                required
-              />
-            </div>
-
-            <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-              <button type="submit" className="btn" disabled={submitting}>
-                {submitting ? 'Submitting…' : 'Register server'}
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
-      </section>
-
-      <p
-        style={{
-          marginTop: '1.5rem',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '0.75rem',
-          color: 'var(--ink-3)',
-          lineHeight: 1.6,
-          maxWidth: 720,
-        }}
-      >
-        The public key is the one generated by the probing agent's <span className="mono">key_manager.py</span>{' '}
-        on the vendor's health server. Once registered, the smart contract uses it to verify the
-        ECDSA signature on every check-in payload.
-      </p>
-    </>
-  );
+      </div>
+      {msg&&<div className={`status-msg ${state==='success'?'msg-success':'msg-error'}`}><span>{state==='success'?'✓':'✕'}</span><span>{msg}</span></div>}
+      <div className="form-actions">
+        <button className={`submit-btn${state==='loading'?' loading':''}`} onClick={handleSubmit} disabled={state==='loading'}>
+          {state==='loading'?'Submitting to Ledger…':'Register on Blockchain'}
+        </button>
+        <div className="submit-note">Registration requires endorsement from both MoH and NITA peer nodes.</div>
+      </div>
+    </div>
+  )
+}
+function Field({label,hint,children}){
+  return(<div className="field-group"><label className="field-label">{label}</label>{hint&&<div className="field-hint">{hint}</div>}{children}</div>)
 }
