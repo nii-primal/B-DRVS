@@ -104,6 +104,18 @@ router.get("/config", async (req, res) => {
   }
 });
 
+// GET /api/servers
+router.get("/servers", async (req, res) => {
+  logger.info("[servers] Fetching all registered servers from ledger");
+  try {
+    const raw = await queryChaincode("GetAllServers", []);
+    return res.status(200).json(JSON.parse(raw) || []);
+  } catch (err) {
+    logger.error(`[servers] ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/health
 router.get("/health", async (req, res) => {
   const connected = await isConnected();
