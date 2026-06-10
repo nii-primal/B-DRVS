@@ -51,40 +51,46 @@ type ServerRecord struct {
 
 // CheckInPayload is the signed packet sent by the Tier 1 Probing Agent.
 // The agent hashes (SHA-256) the canonical string:
-//   "<serverID>|<publicIP>|<rttMs>|<timestamp>"
+//   "<serverID>|<publicIP>|<rttMs>|<storageLatencyMs>|<storageJitterMs>|<timestamp>"
 // and signs that hash with its ECDSA private key.
 type CheckInPayload struct {
-	ServerID  string  `json:"serverID"`
-	PublicIP  string  `json:"publicIP"`
-	RTTms     float64 `json:"rttMs"`      // Round-Trip Time to NITA Verifier Node (ms)
-	Timestamp string  `json:"timestamp"`  // UTC ISO-8601
-	Signature string  `json:"signature"`  // Base64-encoded DER ECDSA signature
+	ServerID         string  `json:"serverID"`
+	PublicIP         string  `json:"publicIP"`
+	RTTms            float64 `json:"rttMs"`            // Round-Trip Time to NITA Verifier Node (ms)
+	StorageLatencyMs float64 `json:"storageLatencyMs"` // Avg local storage I/O latency (ms)
+	StorageJitterMs  float64 `json:"storageJitterMs"`  // Std deviation of storage I/O latency (ms)
+	Timestamp        string  `json:"timestamp"`        // UTC ISO-8601
+	Signature        string  `json:"signature"`        // Base64-encoded DER ECDSA signature
 }
 
 // ResidencyRecord is the immutable record written to the ledger after each check-in.
 // Key: "RECORD_<serverID>_<timestamp>"
 type ResidencyRecord struct {
-	DocType         string  `json:"docType"`         // "RECORD"
-	RecordID        string  `json:"recordID"`
-	ServerID        string  `json:"serverID"`
-	Timestamp       string  `json:"timestamp"`       // from agent payload
-	BlockTime       string  `json:"blockTime"`       // when committed to ledger
-	PublicIP        string  `json:"publicIP"`
-	RTTms           float64 `json:"rttMs"`
-	IPStatus        string  `json:"ipStatus"`        // "GHANA" | "FOREIGN"
-	RTTStatus       string  `json:"rttStatus"`       // "WITHIN_THRESHOLD" | "EXCEEDED"
-	Status          string  `json:"status"`          // "COMPLIANT" | "SOVEREIGNTY_VIOLATION"
-	ViolationReason string  `json:"violationReason"` // empty if compliant
-	PayloadHash     string  `json:"payloadHash"`     // SHA-256 of the signed payload string
+	DocType          string  `json:"docType"`          // "RECORD"
+	RecordID         string  `json:"recordID"`
+	ServerID         string  `json:"serverID"`
+	Timestamp        string  `json:"timestamp"`        // from agent payload
+	BlockTime        string  `json:"blockTime"`        // when committed to ledger
+	PublicIP         string  `json:"publicIP"`
+	RTTms            float64 `json:"rttMs"`
+	StorageLatencyMs float64 `json:"storageLatencyMs"` // Avg local storage I/O latency (ms)
+	StorageJitterMs  float64 `json:"storageJitterMs"`  // Std deviation of storage I/O latency (ms)
+	IPStatus         string  `json:"ipStatus"`         // "GHANA" | "FOREIGN"
+	RTTStatus        string  `json:"rttStatus"`        // "WITHIN_THRESHOLD" | "EXCEEDED"
+	StorageStatus    string  `json:"storageStatus"`    // "LOCAL" | "REMOTE_SUSPECTED"
+	Status           string  `json:"status"`           // "COMPLIANT" | "SOVEREIGNTY_VIOLATION"
+	ViolationReason  string  `json:"violationReason"`  // empty if compliant
+	PayloadHash      string  `json:"payloadHash"`      // SHA-256 of the signed payload string
 }
 
 // NetworkConfig holds the adjustable residency rules stored on the ledger.
 // Key: "NETWORK_CONFIG"
 type NetworkConfig struct {
-	DocType        string   `json:"docType"` // "CONFIG"
-	GhanaIPRanges  []string `json:"ghanaIPRanges"`
-	RTTThresholdMs float64  `json:"rttThresholdMs"`
-	UpdatedAt      string   `json:"updatedAt"`
+	DocType                   string   `json:"docType"` // "CONFIG"
+	GhanaIPRanges             []string `json:"ghanaIPRanges"`
+	RTTThresholdMs            float64  `json:"rttThresholdMs"`
+	StorageLatencyThresholdMs float64  `json:"storageLatencyThresholdMs"`
+	UpdatedAt                 string   `json:"updatedAt"`
 }
 
 // defaultGhanaIPRanges contains IPv4 CIDR blocks allocated by AFRINIC to
@@ -144,6 +150,15 @@ var defaultGhanaIPRanges = []string{
 // the server is not physically located within Ghana.
 const defaultRTTThresholdMs = 50.0
 
+// Default storage I/O latency threshold: 10ms
+// Local NVMe/SSD read+write+fsync cycles typically complete in under 2ms with
+// low jitter. Storage accessed across an international network connection
+// shows latency an order of magnitude higher, with elevated jitter. This
+// threshold was calibrated against local development hardware and should be
+// recalibrated against approved Ghanaian data centre storage benchmarks
+// before production deployment.
+const defaultStorageLatencyThresholdMs = 10.0
+
 // =============================================================================
 // Initialisation
 // =============================================================================
@@ -152,10 +167,11 @@ const defaultRTTThresholdMs = 50.0
 // and RTT threshold). Called once when the chaincode is instantiated.
 func (c *ResidencyContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
 	config := NetworkConfig{
-		DocType:        "CONFIG",
-		GhanaIPRanges:  defaultGhanaIPRanges,
-		RTTThresholdMs: defaultRTTThresholdMs,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
+		DocType:                   "CONFIG",
+		GhanaIPRanges:             defaultGhanaIPRanges,
+		RTTThresholdMs:            defaultRTTThresholdMs,
+		StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
+		UpdatedAt:                 time.Now().UTC().Format(time.RFC3339),
 	}
 
 	configJSON, err := json.Marshal(config)
@@ -278,9 +294,10 @@ func (c *ResidencyContract) SubmitCheckIn(
 	}
 
 	// ── Build the canonical payload string (same format as agent signing) ─────
-	// Format: "<serverID>|<publicIP>|<rttMs>|<timestamp>"
-	canonicalStr := fmt.Sprintf("%s|%s|%.4f|%s",
-		payload.ServerID, payload.PublicIP, payload.RTTms, payload.Timestamp)
+	// Format: "<serverID>|<publicIP>|<rttMs>|<storageLatencyMs>|<storageJitterMs>|<timestamp>"
+	canonicalStr := fmt.Sprintf("%s|%s|%.4f|%.4f|%.4f|%s",
+		payload.ServerID, payload.PublicIP, payload.RTTms,
+		payload.StorageLatencyMs, payload.StorageJitterMs, payload.Timestamp)
 
 	// Compute SHA-256 hash of canonical string (used for payloadHash field)
 	hashBytes := sha256.Sum256([]byte(canonicalStr))
@@ -329,6 +346,24 @@ func (c *ResidencyContract) SubmitCheckIn(
 			fmt.Sprintf("RTT %.2fms exceeds domestic threshold of %.2fms", payload.RTTms, config.RTTThresholdMs))
 	}
 
+	// ──────────────────────────────────────────────────────────────────────────
+	// STEP 4: Storage I/O Latency Check
+	// Compares the agent's measured local storage read/write latency against
+	// the configured threshold. This defends against a "decoy node" attack
+	// where a server physically present in Ghana (passing IP and RTT checks)
+	// accesses its actual database over a remote network mount hosted abroad.
+	// Local NVMe storage exhibits low, consistent latency; network-mounted
+	// storage across international links is both slower and noisier (higher
+	// jitter), even when the compute node itself is genuinely local.
+	// ──────────────────────────────────────────────────────────────────────────
+	storageStatus := "LOCAL"
+	if payload.StorageLatencyMs > config.StorageLatencyThresholdMs {
+		storageStatus = "REMOTE_SUSPECTED"
+		violationReasons = append(violationReasons,
+			fmt.Sprintf("Storage latency %.3fms exceeds local threshold of %.3fms (jitter %.3fms) — database may not be co-located with reporting server",
+				payload.StorageLatencyMs, config.StorageLatencyThresholdMs, payload.StorageJitterMs))
+	}
+
 	// ── Determine final compliance status ─────────────────────────────────────
 	status := "COMPLIANT"
 	violationReason := ""
@@ -340,18 +375,21 @@ func (c *ResidencyContract) SubmitCheckIn(
 	// ── Build and persist the immutable record ────────────────────────────────
 	recordID := fmt.Sprintf("RECORD_%s_%s", payload.ServerID, payload.Timestamp)
 	record := ResidencyRecord{
-		DocType:         "RECORD",
-		RecordID:        recordID,
-		ServerID:        payload.ServerID,
-		Timestamp:       payload.Timestamp,
-		BlockTime:       time.Now().UTC().Format(time.RFC3339),
-		PublicIP:        payload.PublicIP,
-		RTTms:           payload.RTTms,
-		IPStatus:        ipStatus,
-		RTTStatus:       rttStatus,
-		Status:          status,
-		ViolationReason: violationReason,
-		PayloadHash:     payloadHash,
+		DocType:          "RECORD",
+		RecordID:         recordID,
+		ServerID:         payload.ServerID,
+		Timestamp:        payload.Timestamp,
+		BlockTime:        time.Now().UTC().Format(time.RFC3339),
+		PublicIP:         payload.PublicIP,
+		RTTms:            payload.RTTms,
+		StorageLatencyMs: payload.StorageLatencyMs,
+		StorageJitterMs:  payload.StorageJitterMs,
+		IPStatus:         ipStatus,
+		RTTStatus:        rttStatus,
+		StorageStatus:    storageStatus,
+		Status:           status,
+		ViolationReason:  violationReason,
+		PayloadHash:      payloadHash,
 	}
 
 	recordJSON, err := json.Marshal(record)
@@ -663,9 +701,10 @@ func (c *ResidencyContract) getNetworkConfig(
 	if data == nil {
 		// Fallback to defaults if InitLedger hasn't been called yet
 		return &NetworkConfig{
-			DocType:        "CONFIG",
-			GhanaIPRanges:  defaultGhanaIPRanges,
-			RTTThresholdMs: defaultRTTThresholdMs,
+			DocType:                   "CONFIG",
+			GhanaIPRanges:             defaultGhanaIPRanges,
+			RTTThresholdMs:            defaultRTTThresholdMs,
+			StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
 		}, nil
 	}
 
@@ -764,3 +803,4 @@ func parsePEMPublicKey(pemStr string) (*ecdsa.PublicKey, error) {
 
 	return ecPub, nil
 }
+
