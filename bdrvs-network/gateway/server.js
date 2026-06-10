@@ -63,6 +63,7 @@ const server = app.listen(PORT, () => {
   logger.info("  GET  /api/violations    — all violation records");
   logger.info("  GET  /api/stats/:id     — compliance statistics");
   logger.info("  GET  /api/config        — Ghana IP whitelist + RTT threshold");
+  logger.info("  GET  /api/servers        — all registered servers");
   logger.info("  GET  /api/health        — gateway health check");
   logger.info("=".repeat(55));
 });
