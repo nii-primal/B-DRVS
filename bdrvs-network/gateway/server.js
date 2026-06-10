@@ -11,12 +11,11 @@
 require("dotenv").config();
 
 const express = require("express");
-const morgan = require("morgan");
-const { disconnect } = require("./fabric");
-const routes = require("./routes");
-const logger = require("./logger");
+const morgan  = require("morgan");
+const routes  = require("./routes");
+const logger  = require("./logger");
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -69,18 +68,18 @@ const server = app.listen(PORT, () => {
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
-process.on("SIGTERM", async () => {
+// Note: fabric.js uses docker exec (CLI bridge) — no persistent connection
+// object to close. Server closes cleanly on signal.
+process.on("SIGTERM", () => {
   logger.info("SIGTERM received — shutting down gracefully...");
-  await disconnect();
   server.close(() => {
     logger.info("Gateway shut down.");
     process.exit(0);
   });
 });
 
-process.on("SIGINT", async () => {
+process.on("SIGINT", () => {
   logger.info("SIGINT received — shutting down...");
-  await disconnect();
   process.exit(0);
 });
 
