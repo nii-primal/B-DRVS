@@ -5,44 +5,73 @@ import { api, statusClass, fmtTime } from '../utils/api'
 import 'leaflet/dist/leaflet.css'
 import './Overview.css'
 
-const KNOWN_SERVERS = ['LHIMS-KORLE-BU-01']
-const SERVER_COORDS = {
+// Fallback coordinates for known servers.
+// Used when a server's location isn't in the ledger record.
+// The map shows all servers regardless — unknown locations fall back to
+// the centre of Ghana (Accra) so the map never breaks.
+const KNOWN_COORDS = {
   'LHIMS-KORLE-BU-01': { lat: 5.5502, lng: -0.2318, label: 'Korle Bu Teaching Hospital, Accra' },
+}
+const GHANA_CENTER = { lat: 7.9465, lng: -1.0232 }
+
+function coordsForServer(serverID) {
+  return KNOWN_COORDS[serverID] || { lat: GHANA_CENTER.lat, lng: GHANA_CENTER.lng, label: 'Ghana' }
 }
 
 export default function Overview() {
   const [violations, setViolations]     = useState([])
   const [serverStatus, setServerStatus] = useState({})
+  const [serverIDs, setServerIDs]       = useState([])
   const [loading, setLoading]           = useState(true)
   const navigate = useNavigate()
 
-  useEffect(() => { fetchAll(); const t=setInterval(fetchAll,30000); return ()=>clearInterval(t) }, [])
+  useEffect(() => { fetchAll(); const t = setInterval(fetchAll, 30000); return () => clearInterval(t) }, [])
 
   async function fetchAll() {
     try {
+      // First fetch the live server list from the blockchain
+      const srvRes = await api.servers().catch(() => ({ data: [] }))
+      const ids = (srvRes.data || []).map(s => s.serverID).filter(Boolean)
+
+      // Fall back to the known server if the ledger returns nothing
+      // (e.g. chaincode not yet upgraded on this deployment)
+      const activeIDs = ids.length > 0 ? ids : ['LHIMS-KORLE-BU-01']
+      setServerIDs(activeIDs)
+
       const [vRes, ...statusRes] = await Promise.allSettled([
         api.violations(),
-        ...KNOWN_SERVERS.map(id => api.status(id).then(r => ({ id, data: r.data }))),
+        ...activeIDs.map(id => api.status(id).then(r => ({ id, data: r.data }))),
       ])
-      if (vRes.status==='fulfilled') setViolations(vRes.value.data||[])
-      const m={}; statusRes.forEach(r=>{ if(r.status==='fulfilled') m[r.value.id]=r.value.data }); setServerStatus(m)
-    } finally { setLoading(false) }
+
+      if (vRes.status === 'fulfilled') setViolations(vRes.value.data || [])
+
+      const m = {}
+      statusRes.forEach(r => { if (r.status === 'fulfilled') m[r.value.id] = r.value.data })
+      setServerStatus(m)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const allServers = KNOWN_SERVERS.map(id=>({ id, status:serverStatus[id], coords:SERVER_COORDS[id]||{lat:7.9465,lng:-1.0232} }))
-  const totalMonitored  = allServers.length
-  const totalViolations = allServers.filter(s=>s.status?.currentStatus?.toUpperCase().includes('VIOLATION')).length
-  const totalCompliant  = allServers.filter(s=>s.status?.currentStatus?.toUpperCase()==='COMPLIANT').length
+  const allServers = serverIDs.map(id => ({
+    id,
+    status: serverStatus[id],
+    coords: coordsForServer(id),
+  }))
 
-  if (loading) return <div style={{display:'flex',justifyContent:'center',padding:'80px'}}><div className="spinner"/></div>
+  const totalMonitored  = allServers.length
+  const totalViolations = allServers.filter(s => s.status?.status?.toUpperCase().includes('VIOLATION')).length
+  const totalCompliant  = allServers.filter(s => s.status?.status?.toUpperCase() === 'COMPLIANT').length
+
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}><div className="spinner" /></div>
 
   return (
     <div className="overview fade-in">
       <div className="stat-row">
-        <StatCard label="Servers Monitored" value={totalMonitored}  accent="var(--navy)"/>
-        <StatCard label="Compliant"          value={totalCompliant}  accent="var(--gh-green)"/>
-        <StatCard label="In Violation"       value={totalViolations} accent="var(--gh-red)" pulse={totalViolations>0}/>
-        <StatCard label="Records on Chain"   value={violations.length} accent="var(--gh-gold)"/>
+        <StatCard label="Servers Monitored" value={totalMonitored}    accent="var(--navy)" />
+        <StatCard label="Compliant"          value={totalCompliant}    accent="var(--gh-green)" />
+        <StatCard label="In Violation"       value={totalViolations}   accent="var(--gh-red)" pulse={totalViolations > 0} />
+        <StatCard label="Records on Chain"   value={violations.length} accent="var(--gh-gold)" />
       </div>
 
       <div className="two-col">
@@ -52,17 +81,17 @@ export default function Overview() {
             <span className="tag tag-neutral">Ghana</span>
           </div>
           <div className="map-wrap">
-            <MapContainer center={[7.9465,-1.0232]} zoom={6} style={{height:'100%',width:'100%'}} attributionControl={false}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"/>
-              {allServers.map(srv=>{
-                const isV=srv.status?.currentStatus?.toUpperCase().includes('VIOLATION')
-                return(
-                  <CircleMarker key={srv.id} center={[srv.coords.lat,srv.coords.lng]} radius={14}
-                    pathOptions={{color:isV?'#CE1126':'#006B3F',fillColor:isV?'#CE1126':'#006B3F',fillOpacity:.85,weight:2}}>
+            <MapContainer center={[GHANA_CENTER.lat, GHANA_CENTER.lng]} zoom={6} style={{ height: '100%', width: '100%' }} attributionControl={false}>
+              <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+              {allServers.map(srv => {
+                const isV = srv.status?.status?.toUpperCase().includes('VIOLATION')
+                return (
+                  <CircleMarker key={srv.id} center={[srv.coords.lat, srv.coords.lng]} radius={14}
+                    pathOptions={{ color: isV ? '#CE1126' : '#006B3F', fillColor: isV ? '#CE1126' : '#006B3F', fillOpacity: .85, weight: 2 }}>
                     <Popup>
-                      <strong>{srv.id}</strong><br/>{srv.coords.label}<br/>
-                      <span style={{color:isV?'#CE1126':'#006B3F',fontWeight:600}}>{srv.status?.currentStatus||'UNKNOWN'}</span><br/>
-                      <button onClick={()=>navigate(`/servers/${srv.id}`)} style={{marginTop:6,padding:'4px 10px',background:'#0D1B2A',color:'#fff',border:'none',cursor:'pointer',fontSize:11}}>View Detail →</button>
+                      <strong>{srv.id}</strong><br />{srv.coords.label}<br />
+                      <span style={{ color: isV ? '#CE1126' : '#006B3F', fontWeight: 600 }}>{srv.status?.status || 'UNKNOWN'}</span><br />
+                      <button onClick={() => navigate(`/servers/${srv.id}`)} style={{ marginTop: 6, padding: '4px 10px', background: '#0D1B2A', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11 }}>View Detail →</button>
                     </Popup>
                   </CircleMarker>
                 )
@@ -70,25 +99,25 @@ export default function Overview() {
             </MapContainer>
           </div>
           <div className="map-legend">
-            <span className="legend-item"><span className="dot green"/>Compliant</span>
-            <span className="legend-item"><span className="dot red"/>Sovereignty Violation</span>
+            <span className="legend-item"><span className="dot green" />Compliant</span>
+            <span className="legend-item"><span className="dot red" />Sovereignty Violation</span>
           </div>
         </div>
 
         <div className="card violations-card">
           <div className="card-header">
             <span className="card-title">Recent Violations</span>
-            <button className="link-btn" onClick={()=>navigate('/violations')}>View all →</button>
+            <button className="link-btn" onClick={() => navigate('/violations')}>View all →</button>
           </div>
-          {violations.length===0
+          {violations.length === 0
             ? <div className="empty-state"><div className="empty-icon">✓</div><div>No violations recorded</div></div>
             : <div className="violation-list">
-                {[...violations].slice(0,6).map((v,i)=>(
-                  <div key={i} className="violation-row" onClick={()=>navigate(`/servers/${v.serverID}`)}>
+                {[...violations].slice(0, 6).map((v, i) => (
+                  <div key={i} className="violation-row" onClick={() => navigate(`/servers/${v.serverID}`)}>
                     <div className="v-left">
                       <span className="tag tag-violation">VIOLATION</span>
                       <div className="v-server">{v.serverID}</div>
-                      <div className="v-reason mono">{v.violationReason||v.status}</div>
+                      <div className="v-reason mono">{v.violationReason || v.status}</div>
                     </div>
                     <div className="v-right">
                       <div className="v-ip mono">{v.publicIP}</div>
@@ -106,16 +135,16 @@ export default function Overview() {
         <table className="data-table">
           <thead><tr><th>SERVER ID</th><th>CURRENT IP</th><th>RTT</th><th>STATUS</th><th>LAST CHECK-IN</th><th></th></tr></thead>
           <tbody>
-            {allServers.map(srv=>{
-              const s=srv.status
-              return(
+            {allServers.map(srv => {
+              const s = srv.status
+              return (
                 <tr key={srv.id}>
                   <td className="mono">{srv.id}</td>
-                  <td className="mono">{s?.publicIP||'—'}</td>
-                  <td className="mono">{s?.rttMs!=null?`${Number(s.rttMs).toFixed(2)} ms`:'—'}</td>
-                  <td><span className={`tag ${statusClass(s?.currentStatus)}`}>{s?.currentStatus||'UNKNOWN'}</span></td>
+                  <td className="mono">{s?.publicIP || '—'}</td>
+                  <td className="mono">{s?.rttMs != null ? `${Number(s.rttMs).toFixed(2)} ms` : '—'}</td>
+                  <td><span className={`tag ${statusClass(s?.status)}`}>{s?.status || 'UNKNOWN'}</span></td>
                   <td>{fmtTime(s?.timestamp)}</td>
-                  <td><button className="detail-btn" onClick={()=>navigate(`/servers/${srv.id}`)}>Detail →</button></td>
+                  <td><button className="detail-btn" onClick={() => navigate(`/servers/${srv.id}`)}>Detail →</button></td>
                 </tr>
               )
             })}
@@ -125,10 +154,11 @@ export default function Overview() {
     </div>
   )
 }
-function StatCard({label,value,accent,pulse}){
-  return(
-    <div className={`stat-card${pulse?' pulse-red':''}`} style={{'--accent':accent}}>
-      <div className="stat-accent-bar"/>
+
+function StatCard({ label, value, accent, pulse }) {
+  return (
+    <div className={`stat-card${pulse ? ' pulse-red' : ''}`} style={{ '--accent': accent }}>
+      <div className="stat-accent-bar" />
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
