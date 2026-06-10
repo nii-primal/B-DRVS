@@ -21,7 +21,9 @@ import argparse
 import json
 import logging
 import os
+import secrets
 import socket
+import statistics
 import sys
 import time
 import datetime
@@ -138,16 +140,96 @@ def measure_rtt_ms() -> float:
 
 
 # =============================================================================
+# Step B2 — Measure Storage I/O Latency
+# =============================================================================
+
+def measure_storage_latency_ms() -> tuple[float, float]:
+    """
+    Measures local storage I/O latency by writing and reading small random
+    blobs to STORAGE_PROBE_PATH, with fsync to bypass OS page caching.
+
+    This defends against a "decoy node" attack: a server physically present
+    in Ghana (passing IP and RTT checks) whose actual database lives on a
+    network-mounted volume hosted abroad. Local NVMe/SSD storage gives
+    sub-millisecond, low-jitter latency. Network-mounted storage across
+    international links is both slower and noisier (higher jitter).
+
+    IMPORTANT: STORAGE_PROBE_PATH should point to a directory on the SAME
+    disk volume as the database's data directory — NOT the data directory
+    itself. See config.py for guidance.
+
+    Returns:
+        (mean_latency_ms, jitter_ms) — jitter is the standard deviation
+        across samples. Returns (0.0, 0.0) if fewer than 2 samples succeed
+        (not enough data to compute a meaningful standard deviation).
+    """
+    os.makedirs(config.STORAGE_PROBE_PATH, exist_ok=True)
+
+    samples = []
+    for i in range(config.STORAGE_PROBE_SAMPLES):
+        probe_file = os.path.join(
+            config.STORAGE_PROBE_PATH, f".bdrvs_probe_{os.getpid()}_{i}"
+        )
+        blob = secrets.token_bytes(config.STORAGE_PROBE_BLOB_BYTES)
+
+        try:
+            start = time.perf_counter()
+
+            # Write + fsync — forces data to physical storage, not just
+            # the OS page cache, so we measure real disk/network latency.
+            fd = os.open(probe_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+            os.write(fd, blob)
+            os.fsync(fd)
+            os.close(fd)
+
+            # Read back
+            fd = os.open(probe_file, os.O_RDONLY)
+            os.read(fd, config.STORAGE_PROBE_BLOB_BYTES)
+            os.close(fd)
+
+            end = time.perf_counter()
+
+            latency_ms = (end - start) * 1000
+            samples.append(latency_ms)
+            logger.debug(f"Storage I/O sample {i+1}/{config.STORAGE_PROBE_SAMPLES}: {latency_ms:.4f}ms")
+
+        except OSError as e:
+            logger.warning(f"Storage probe sample {i+1} failed: {e}")
+        finally:
+            try:
+                os.remove(probe_file)
+            except OSError:
+                pass
+
+    if len(samples) < 2:
+        logger.warning(
+            "Storage latency probe produced fewer than 2 samples — "
+            "returning zero. Check STORAGE_PROBE_PATH is writable."
+        )
+        return 0.0, 0.0
+
+    mean_latency = statistics.mean(samples)
+    jitter = statistics.stdev(samples)
+
+    logger.info(
+        f"Storage I/O latency: avg={mean_latency:.4f}ms, jitter={jitter:.4f}ms "
+        f"(samples={len(samples)}, path={config.STORAGE_PROBE_PATH})"
+    )
+    return round(mean_latency, 4), round(jitter, 4)
+
+
+# =============================================================================
 # Step C — Build and Sign Canonical Payload
 # =============================================================================
 
-def build_signed_payload(public_ip: str, rtt_ms: float) -> dict:
+def build_signed_payload(public_ip: str, rtt_ms: float,
+                          storage_latency_ms: float, storage_jitter_ms: float) -> dict:
     """
     Constructs the CheckInPayload that will be submitted to the blockchain.
 
     The canonical string for signing must exactly match the format
     expected by the Go smart contract's verifyECDSASignature function:
-        "<serverID>|<publicIP>|<rttMs:.4f>|<timestamp>"
+        "<serverID>|<publicIP>|<rttMs:.4f>|<storageLatencyMs:.4f>|<storageJitterMs:.4f>|<timestamp>"
 
     Returns:
         A dict matching the CheckInPayload struct in residency.go
@@ -155,7 +237,10 @@ def build_signed_payload(public_ip: str, rtt_ms: float) -> dict:
     timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Build canonical string — MUST match Go chaincode format exactly
-    canonical_str = f"{config.SERVER_ID}|{public_ip}|{rtt_ms:.4f}|{timestamp}"
+    canonical_str = (
+        f"{config.SERVER_ID}|{public_ip}|{rtt_ms:.4f}|"
+        f"{storage_latency_ms:.4f}|{storage_jitter_ms:.4f}|{timestamp}"
+    )
     logger.debug(f"Canonical string: {canonical_str}")
 
     # Load private key and sign
@@ -163,16 +248,20 @@ def build_signed_payload(public_ip: str, rtt_ms: float) -> dict:
     signature = key_manager.sign_payload(private_key, canonical_str)
 
     payload = {
-        "serverID":  config.SERVER_ID,
-        "publicIP":  public_ip,
-        "rttMs":     rtt_ms,
-        "timestamp": timestamp,
-        "signature": signature
+        "serverID":         config.SERVER_ID,
+        "publicIP":         public_ip,
+        "rttMs":            rtt_ms,
+        "storageLatencyMs": storage_latency_ms,
+        "storageJitterMs":  storage_jitter_ms,
+        "timestamp":        timestamp,
+        "signature":        signature
     }
 
     logger.info(
         f"Payload built — server={config.SERVER_ID} "
-        f"ip={public_ip} rtt={rtt_ms}ms ts={timestamp}"
+        f"ip={public_ip} rtt={rtt_ms}ms "
+        f"storage_latency={storage_latency_ms}ms storage_jitter={storage_jitter_ms}ms "
+        f"ts={timestamp}"
     )
     return payload
 
@@ -295,8 +384,11 @@ def run_checkin_cycle() -> None:
         # B — RTT
         rtt_ms = measure_rtt_ms()
 
+        # B2 — Storage I/O latency
+        storage_latency_ms, storage_jitter_ms = measure_storage_latency_ms()
+
         # C — Sign
-        payload = build_signed_payload(public_ip, rtt_ms)
+        payload = build_signed_payload(public_ip, rtt_ms, storage_latency_ms, storage_jitter_ms)
 
         # D — Submit
         result = submit_checkin(payload)
@@ -368,8 +460,13 @@ def test_signing_only() -> None:
 
     dummy_ip  = "41.57.10.5"
     dummy_rtt = 12.3456
+    dummy_storage_latency = 1.2345
+    dummy_storage_jitter  = 0.2345
     dummy_ts  = "2026-05-12T12:00:00Z"
-    canonical = f"{config.SERVER_ID}|{dummy_ip}|{dummy_rtt:.4f}|{dummy_ts}"
+    canonical = (
+        f"{config.SERVER_ID}|{dummy_ip}|{dummy_rtt:.4f}|"
+        f"{dummy_storage_latency:.4f}|{dummy_storage_jitter:.4f}|{dummy_ts}"
+    )
 
     private_key = key_manager.load_private_key(test_private)
     signature   = key_manager.sign_payload(private_key, canonical)
@@ -379,11 +476,13 @@ def test_signing_only() -> None:
     logger.info(f"Public key PEM   :\n{key_manager.load_public_key_pem(test_public)}")
 
     test_payload = {
-        "serverID":  config.SERVER_ID,
-        "publicIP":  dummy_ip,
-        "rttMs":     dummy_rtt,
-        "timestamp": dummy_ts,
-        "signature": signature
+        "serverID":         config.SERVER_ID,
+        "publicIP":         dummy_ip,
+        "rttMs":            dummy_rtt,
+        "storageLatencyMs": dummy_storage_latency,
+        "storageJitterMs":  dummy_storage_jitter,
+        "timestamp":        dummy_ts,
+        "signature":        signature
     }
 
     logger.info("Test payload (ready for gateway submission):")
@@ -420,3 +519,4 @@ if __name__ == "__main__":
     else:
         # Single run
         run_checkin_cycle()
+
