@@ -7,10 +7,9 @@ import os
 import base64
 import logging
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.backends import default_backend
-import struct
+
 
 logger = logging.getLogger(__name__)
 
