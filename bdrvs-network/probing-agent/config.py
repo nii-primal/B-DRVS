@@ -43,6 +43,34 @@ VERIFIER_PING_COUNT = 5                       # RTT samples to average
 # consistently exceed this threshold due to propagation distance.
 RTT_THRESHOLD_MS = 50.0
 
+# ── Storage I/O Latency Probe ────────────────────────────────────────────────
+# Defends against a "decoy node" attack: a TPM/agent-equipped machine sits
+# inside Ghana (passing IP and RTT checks) while the actual database it
+# serves lives on a remote network-mounted volume hosted abroad.
+#
+# Each check-in cycle, the agent writes and reads a small random blob to
+# STORAGE_PROBE_PATH and times both operations (with fsync to bypass OS
+# caching). Local NVMe/SSD storage gives sub-millisecond, low-jitter
+# latency. Network-mounted storage across international links is both
+# slower and noisier.
+#
+# DEPLOYMENT NOTE — STORAGE_PROBE_PATH:
+#   Point this at a directory on the SAME disk volume/mount point as the
+#   database's actual data directory — NOT the data directory itself
+#   (avoids permission issues and risk to real data).
+#
+#   Local development: any local path, e.g. "/tmp/bdrvs-probe"
+#   Production: a dedicated directory on the same volume as
+#     PostgreSQL's data directory, e.g. "/var/lib/postgresql/bdrvs-probe"
+STORAGE_PROBE_PATH        = "/tmp/bdrvs-probe"
+STORAGE_PROBE_SAMPLES     = 10      # read+write cycles per check-in
+STORAGE_PROBE_BLOB_BYTES  = 4096    # size of each test blob (4KB)
+
+# Must match the value stored in the smart contract (default 10ms).
+# Calibrated against local development hardware — recalibrate against
+# approved Ghanaian data centre storage benchmarks in production.
+STORAGE_LATENCY_THRESHOLD_MS = 10.0
+
 # ── REST API Gateway ──────────────────────────────────────────────────────────
 GATEWAY_URL         = "http://localhost:3000/api/checkin"
 GATEWAY_TIMEOUT_SEC = 10
@@ -69,3 +97,4 @@ CHECK_IN_INTERVAL_SEC = 3600
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_FILE  = "./logs/agent.log"
 LOG_LEVEL = "INFO"    # DEBUG | INFO | WARNING | ERROR
+
