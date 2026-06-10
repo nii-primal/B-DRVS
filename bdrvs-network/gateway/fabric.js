@@ -14,13 +14,22 @@ const NITA_TLS_CA = "/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/p
 const CHANNEL    = "bdrvschannel";
 const CHAINCODE  = "residency";
 
+// ── Shell-escape helper ───────────────────────────────────────────────────────
+// Wraps a string in single quotes and escapes any embedded single quotes.
+// This prevents shell injection when interpolating user-supplied data into
+// command strings. Pattern: replace each ' with '\'' (end quote, literal
+// apostrophe, reopen quote).
+function shellEscape(str) {
+  return "'" + String(str).replace(/'/g, "'\\''") + "'";
+}
+
 // ── Query (read-only) ─────────────────────────────────────────────────────────
 async function queryChaincode(fcn, args = []) {
   const payload = JSON.stringify({ function: fcn, Args: args });
   const cmd = `docker exec bdrvs_cli peer chaincode query \
     --channelID ${CHANNEL} \
     --name ${CHAINCODE} \
-    -c '${payload}'`;
+    -c ${shellEscape(payload)}`;
 
   logger.debug(`[fabric] query: ${fcn}(${args.join(", ")})`);
   const { stdout } = await execAsync(cmd);
@@ -37,7 +46,7 @@ async function invokeChaincode(fcn, args = []) {
     --tls --cafile ${ORDERER_CA} \
     --peerAddresses ${MOH_PEER}  --tlsRootCertFiles ${MOH_TLS_CA} \
     --peerAddresses ${NITA_PEER} --tlsRootCertFiles ${NITA_TLS_CA} \
-    -c '${payload}'`;
+    -c ${shellEscape(payload)}`;
 
   logger.debug(`[fabric] invoke: ${fcn}(${args.join(", ")})`);
   const { stdout, stderr } = await execAsync(cmd);
