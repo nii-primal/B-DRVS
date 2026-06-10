@@ -14,7 +14,7 @@
 | Ahinakwa Eugene Nii Okai | FOE.41.018.016.22 | System Development — Fabric network, smart contract, probing agent, REST gateway |
 | Boateng Theophilus Oware | FOE.41.018.046.22 | Local Testing — end-to-end validation, check-in scenarios, violation simulation |
 | Arthur Cephas Ebo | FOE.41.018.031.22 | Admin Dashboard — React frontend, compliance map, RTT charts, evidence export |
-| Tengviel Edwin Daaro | F.O.E 41.018.115.22 | Cloud Testing — AWS/DigitalOcean deployment, foreign hosting simulation |
+| Tengviel Edwin Daaro | F.O.E.41.018.115.22 | Cloud Testing — AWS/DigitalOcean deployment, foreign hosting simulation |
 | Sowah Arnold Nii Adjetey | FOE.41.018.110.22 | Cloud Testing — AWS/DigitalOcean deployment, foreign hosting simulation |
 
 **Supervisor:** Mr Mohammed Yussif Umaru
@@ -25,7 +25,27 @@
 
 ## What This System Does
 
-Ghana's Data Protection Act (2012) requires health data to remain under Ghanaian jurisdiction. But the Ministry of Health has no way to verify in real time where vendor-hosted health servers are physically located — a gap exposed by the 2025 dispute between the Ministry of Health and Lightwave Technologies over whether patient data was hosted in India or Accra.
+Ghana's Data Protection Act (2012) requires health data to remain under Ghanaian 
+jurisdiction. But the Ministry of Health has no automated way to verify in real 
+time where vendor-hosted health servers are physically located.
+
+This gap has already caused harm. A forensic audit of the Lightwave Technologies 
+LHIMS contract (2019–2024) found that cloud servers hosting national patient data 
+were located abroad, and that health data had been held for ransom by a foreign 
+private entity — a direct breach of Ghana's data sovereignty obligations 
+(Africa HealthTech Alliance, November 2025; Ghana Sentinel, October 2025).
+
+The problem extends beyond individual contracts. In April 2026, Ghana's Data 
+Protection Commission rejected a $109 million US health agreement after its 
+Executive Director determined that proposed clauses would grant foreign entities 
+access to national health databases, metadata, and dashboards without adequate 
+Ghanaian oversight — effectively shifting control of the health data architecture 
+abroad (Ghana DPC, April 2026).
+
+B-DRVS directly addresses this verification gap by continuously and automatically 
+confirming whether health servers are physically located within Ghana, writing 
+tamper-proof compliance records to a permissioned blockchain, and alerting 
+regulators in real time when a violation is detected.
 
 **B-DRVS solves this** by continuously and automatically verifying whether health servers are physically located within Ghana, writing tamper-proof compliance records to a permissioned blockchain, and alerting regulators in real time when a violation is detected.
 
