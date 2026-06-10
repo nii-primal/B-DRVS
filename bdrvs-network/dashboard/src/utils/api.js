@@ -3,6 +3,7 @@ const BASE = '/api'
 export const api = {
   health:     () => axios.get(`${BASE}/health`),
   config:     () => axios.get(`${BASE}/config`),
+  servers:    () => axios.get(`${BASE}/servers`),
   violations: () => axios.get(`${BASE}/violations`),
   status:   id => axios.get(`${BASE}/status/${id}`),
   history:  id => axios.get(`${BASE}/history/${id}`),
