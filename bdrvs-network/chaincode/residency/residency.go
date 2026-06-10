@@ -565,6 +565,39 @@ func (c *ResidencyContract) UpdateRTTThreshold(
 	return c.saveNetworkConfig(ctx, config)
 }
 
+// GetAllServers returns all registered server records on the ledger.
+// Used by the dashboard to discover monitored servers dynamically.
+func (c *ResidencyContract) GetAllServers(
+	ctx contractapi.TransactionContextInterface,
+) ([]*ServerRecord, error) {
+	startKey := "SERVER_"
+	endKey := "SERVER_~"
+
+	iterator, err := ctx.GetStub().GetStateByRange(startKey, endKey)
+	if err != nil {
+		return nil, fmt.Errorf("range query failed: %w", err)
+	}
+	defer iterator.Close()
+
+	var servers []*ServerRecord
+	for iterator.HasNext() {
+		result, err := iterator.Next()
+		if err != nil {
+			return nil, fmt.Errorf("iterator error: %w", err)
+		}
+
+		var server ServerRecord
+		if err := json.Unmarshal(result.Value, &server); err != nil {
+			continue
+		}
+		if server.Active {
+			servers = append(servers, &server)
+		}
+	}
+
+	return servers, nil
+}
+
 // AddGhanaIPRange appends a new CIDR block to the Ghana IP whitelist.
 // Use this when AFRINIC allocates new ranges to Ghanaian entities.
 func (c *ResidencyContract) AddGhanaIPRange(
