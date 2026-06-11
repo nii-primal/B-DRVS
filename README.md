@@ -23,6 +23,37 @@
 
 ---
 
+## What's New (Latest Revision)
+
+This revision addresses issues identified during an internal code and
+security review, and adds a new verification layer:
+
+- **Fixed a shutdown crash** in the REST API Gateway (`server.js` referenced
+  a non-existent `disconnect` function).
+- **Fixed a shell injection vulnerability** in the gateway's Fabric CLI
+  bridge (`fabric.js`) — all chaincode arguments are now shell-escaped
+  before being passed to `docker exec`.
+- **Corrected the RTT verifier configuration** — `VERIFIER_HOST` no longer
+  points at `localhost` (which made the RTT check measure nothing
+  meaningful), and the placeholder owner organisation was corrected.
+- **Replaced an unverifiable motivating incident** with two real, citable
+  cases of Ghanaian health data sovereignty breaches (the Lightwave
+  Technologies LHIMS audit and Ghana's rejection of a $109M US health data
+  agreement in April 2026).
+- **Rebuilt the Ghana IP whitelist** using AFRINIC-allocated, RPKI-validated
+  CIDR ranges traceable to specific Ghanaian ASNs (Telecel Ghana, MTN Ghana,
+  Airtel Ghana, and others). The previous whitelist included an overly broad
+  `/12` block spanning multiple countries.
+- **Added dynamic server discovery** — a new `GetAllServers` chaincode
+  function and `/api/servers` endpoint mean the dashboard now lists every
+  server registered on the ledger, instead of a single hardcoded server ID.
+- **Removed a duplicate, unused map component** (`ComplianceMap.jsx`) that
+  was never imported anywhere in the dashboard.
+- **Added Storage I/O Latency Probing (Step 4 of validation)** — see the
+  architecture and validation logic sections below for details.
+
+---
+
 ## What This System Does
 
 Ghana's Data Protection Act (2012) requires health data to remain under Ghanaian 
@@ -47,7 +78,12 @@ confirming whether health servers are physically located within Ghana, writing
 tamper-proof compliance records to a permissioned blockchain, and alerting 
 regulators in real time when a violation is detected.
 
-**B-DRVS solves this** by continuously and automatically verifying whether health servers are physically located within Ghana, writing tamper-proof compliance records to a permissioned blockchain, and alerting regulators in real time when a violation is detected.
+A further, more subtle threat motivated an additional check in this system: a
+vendor could keep a compliant-looking server inside Ghana (passing IP and RTT
+checks) while the actual database it serves is accessed remotely from a
+network-mounted volume hosted abroad — a "decoy node." B-DRVS addresses this
+with a fourth verification layer, **storage I/O latency probing**, described
+below.
 
 ---
 
@@ -57,7 +93,8 @@ regulators in real time when a violation is detected.
 ┌─────────────────────────────────────────────────────────┐
 │  TIER 1 — Probing Agent (Python)                        │
 │  Runs on vendor health server                           │
-│  Collects public IP + RTT → signs with ECDSA → submits  │
+│  Collects public IP + RTT + storage I/O latency         │
+│  → signs with ECDSA → submits                           │
 └──────────────────────┬──────────────────────────────────┘
                        │ POST /api/checkin
 ┌──────────────────────▼──────────────────────────────────┐
@@ -70,13 +107,17 @@ regulators in real time when a violation is detected.
 │  Step 1: Verify ECDSA signature                         │
 │  Step 2: Check IP against Ghana AFRINIC whitelist       │
 │  Step 3: Check RTT against 50ms domestic threshold      │
+│  Step 4: Check storage I/O latency against 10ms local-  │
+│          storage threshold (defends against decoy-node  │
+│          attacks where compute is local but storage     │
+│          is hosted abroad)                              │
 │  Result: COMPLIANT or SOVEREIGNTY_VIOLATION on ledger   │
 └──────────────────────┬──────────────────────────────────┘
                        │ GET /api/*
 ┌──────────────────────▼──────────────────────────────────┐
 │  TIER 3 — Admin Dashboard (React + Vite + Leaflet)      │
 │  Real-time compliance map, violation alerts,            │
-│  RTT latency charts, evidence export for regulators     │
+│  RTT + storage latency charts, evidence export          │
 │  http://localhost:5173                                  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -329,6 +370,23 @@ curl -s http://localhost:3000/api/config | python3 -m json.tool
 
 ### Step 9 — Run the Probing Agent
 
+The agent measures three things each cycle: public IP, RTT to the NITA
+verifier node, and local storage I/O latency.
+
+**RTT verifier hostname** — `config.py` points `VERIFIER_HOST` at
+`peer0.nita.bdrvs.gh` (the NITA peer's container hostname). On a single
+development machine this hostname won't resolve unless you add it to
+`/etc/hosts` — the NITA peer's port 9051 is published to the host, so
+pointing the hostname at loopback works:
+
+```bash
+echo "127.0.0.1 peer0.nita.bdrvs.gh" | sudo tee -a /etc/hosts
+```
+
+**Storage probe path** — `STORAGE_PROBE_PATH` defaults to
+`/tmp/bdrvs-probe` and is created automatically. No action needed for
+local testing.
+
 ```bash
 cd ../probing-agent
 pip3 install -r requirements.txt --break-system-packages
@@ -340,9 +398,13 @@ python3 -c "import config, key_manager, agent; agent.register_server()"
 python3 agent.py
 ```
 
-Expected output includes either:
-- `✅ COMPLIANT` — server IP is in a Ghanaian AFRINIC range
-- `🚨 SOVEREIGNTY_VIOLATION` — server IP is foreign (expected on a dev machine)
+Expected log output includes:
+- `RTT to NITA Verifier Node: avg=...ms`
+- `Storage I/O latency: avg=...ms, jitter=...ms`
+- Either `✅ COMPLIANT` — public IP is in a Ghanaian AFRINIC range and both
+  latency checks pass — or `🚨 SOVEREIGNTY_VIOLATION` — one or more checks
+  failed (expected for IP/RTT on a dev machine, since its public IP and
+  network position are not actually inside Ghana)
 
 ---
 
@@ -363,6 +425,7 @@ The dashboard proxies all `/api/*` requests to the gateway on port 3000 automati
 ### Step 11 — Verify Everything End-to-End
 
 ```bash
+curl -s http://localhost:3000/api/servers | python3 -m json.tool
 curl -s http://localhost:3000/api/status/LHIMS-KORLE-BU-01 | python3 -m json.tool
 curl -s http://localhost:3000/api/violations | python3 -m json.tool
 curl -s http://localhost:3000/api/stats/LHIMS-KORLE-BU-01 | python3 -m json.tool
@@ -400,7 +463,7 @@ cd ../dashboard && npm run dev                         # Terminal 3: Dashboard
 The main landing page for regulators. Shows four live stat cards (Servers Monitored, Compliant, In Violation, Records on Chain), an interactive Ghana-centred Leaflet compliance map with green/red server markers, a recent violations panel, and a full monitored servers table. Auto-refreshes every 30 seconds.
 
 ### Server Detail — `/servers/:id`
-Deep-dive into a single server's compliance history. Shows a violation alert banner if active, a status strip with current IP/RTT/compliance rate, an RTT latency trend chart with the 50ms threshold marked as a dashed gold line, and the complete immutable audit trail table from the blockchain. Includes an **Export Evidence Report** button that downloads a `.tsv` file for use in DPC investigations and legal proceedings.
+Deep-dive into a single server's compliance history. Shows a violation alert banner if active, a status strip with current IP, RTT, storage latency, storage status, and compliance rate, an RTT latency trend chart and a separate storage I/O latency trend chart — each with its threshold (read live from the ledger config) marked as a dashed gold line — and the complete immutable audit trail table from the blockchain. Includes an **Export Evidence Report** button that downloads a `.tsv` file for use in DPC investigations and legal proceedings.
 
 ### Violations — `/violations`
 Full filterable list of every `SOVEREIGNTY_VIOLATION` record across all servers on the ledger, with live search across server ID, IP address, and violation reason.
@@ -488,7 +551,7 @@ B-DRVS/
     │   ├── src/
     │   │   ├── pages/                     ← Overview, ServerDetail, Violations, Register
     │   │   ├── components/                ← Map, charts, tables, stat cards
-    │   │   └── api/client.js             ← All gateway API calls
+    │   │   └── utils/api.js              ← All gateway API calls + formatters
     │   ├── vite.config.js                 ← Proxy /api/* to port 3000
     │   └── package.json                  ← React + Vite + Leaflet dependencies
     ├── crypto-material/                   ← Generated — git ignored
@@ -502,9 +565,10 @@ B-DRVS/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/health` | Gateway + blockchain health check |
-| GET | `/api/config` | Ghana IP whitelist + RTT threshold from ledger |
+| GET | `/api/config` | Ghana IP whitelist, RTT threshold, and storage latency threshold from ledger |
+| GET | `/api/servers` | All registered servers on the ledger |
 | POST | `/api/register` | Register a health server with its ECDSA public key |
-| POST | `/api/checkin` | Submit a signed location proof |
+| POST | `/api/checkin` | Submit a signed location + storage latency proof |
 | GET | `/api/status/:serverID` | Latest compliance status for a server |
 | GET | `/api/history/:serverID` | Full audit trail for a server |
 | GET | `/api/violations` | All SOVEREIGNTY_VIOLATION records |
@@ -546,7 +610,7 @@ B-DRVS/
 
 ## Smart Contract Validation Logic
 
-Every check-in from the probing agent goes through three steps:
+Every check-in from the probing agent goes through four steps:
 
 ```
 Signed Payload
@@ -556,14 +620,22 @@ Step 1: Verify ECDSA signature
       │ fail → reject (spoofed payload)
       ▼
 Step 2: IP in Ghana AFRINIC range?
-      │ fail → SOVEREIGNTY_VIOLATION
+      │ fail → SOVEREIGNTY_VIOLATION (IP_OUTSIDE_GHANA)
       ▼
 Step 3: RTT ≤ 50ms threshold?
-      │ fail → SOVEREIGNTY_VIOLATION
+      │ fail → SOVEREIGNTY_VIOLATION (RTT_EXCEEDED)
+      ▼
+Step 4: Storage I/O latency ≤ 10ms threshold?
+      │ fail → SOVEREIGNTY_VIOLATION (STORAGE_LATENCY_EXCEEDED)
+      │        — local compute may be a "decoy node" for a
+      │          remotely-hosted database
       ▼
     COMPLIANT → written to immutable ledger
                 + event emitted to dashboard
 ```
+
+A single check-in can fail more than one step simultaneously — all
+violation reasons are recorded together on the same ledger entry.
 
 ---
 
@@ -588,7 +660,8 @@ Step 3: RTT ≤ 50ms threshold?
 | Peers crash on startup — MSP path missing | Regenerate crypto-material; ensure peer folder has `msp/` and `tls/` subdirectories |
 | Chaincode install fails — no builder image | Add `builder: hyperledger/fabric-ccenv:2.5` to `compose/peercfg/core.yaml` |
 | Gateway returns empty on `/api/violations` | Timing issue — wait 3 seconds after check-in then retry |
-| RTT measurement fails — hostname not resolved | Set `VERIFIER_HOST = "localhost"` in `probing-agent/config.py` for dev environments |
+| RTT measurement fails — `peer0.nita.bdrvs.gh` not resolved | Add `127.0.0.1 peer0.nita.bdrvs.gh` to `/etc/hosts` (NITA peer's port 9051 is published to the host by docker-compose) |
+| Storage latency probe fails — permission denied | Ensure `STORAGE_PROBE_PATH` (default `/tmp/bdrvs-probe`) is writable by the user running `agent.py` |
 | `Cannot find module 'dotenv'` | Run `npm install` in `gateway/` |
 | Dashboard map not loading | Run `npm install` in `dashboard/` — Leaflet CSS may be missing |
 
@@ -601,3 +674,4 @@ This system is designed to support enforcement of:
 - **Cybersecurity Act, 2020 (Act 1038)** — extends data protection with cybersecurity authority
 
 ---
+
