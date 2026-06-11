@@ -34,7 +34,7 @@ export default function Violations() {
               {violations.length===0?<><div className="empty-icon" style={{color:'var(--gh-green)'}}>✓</div><div>No violations on the ledger</div></>:<div>No records match that filter</div>}
             </div>
           :<table className="data-table">
-            <thead><tr><th>RECORD ID</th><th>SERVER</th><th>TIMESTAMP (UTC)</th><th>PUBLIC IP</th><th>IP STATUS</th><th>RTT</th><th>VIOLATION REASON</th><th>PAYLOAD HASH</th><th></th></tr></thead>
+            <thead><tr><th>RECORD ID</th><th>SERVER</th><th>TIMESTAMP (UTC)</th><th>PUBLIC IP</th><th>IP STATUS</th><th>RTT</th><th>STORAGE LATENCY</th><th>STORAGE STATUS</th><th>VIOLATION REASON</th><th>PAYLOAD HASH</th><th></th></tr></thead>
             <tbody>
               {[...filtered].reverse().map((v,i)=>(
                 <tr key={i} className="violation-row">
@@ -42,8 +42,10 @@ export default function Violations() {
                   <td className="mono server-cell">{v.serverID}</td>
                   <td className="mono">{fmtTime(v.timestamp)}</td>
                   <td className="mono">{v.publicIP||'—'}</td>
-                  <td><span className="tag tag-violation">{v.ipStatus||'FOREIGN'}</span></td>
+                  <td><span className={`tag ${v.ipStatus==='FOREIGN'?'tag-violation':'tag-compliant'}`}>{v.ipStatus||'—'}</span></td>
                   <td className="mono">{fmtRtt(v.rttMs)}</td>
+                  <td className="mono">{fmtRtt(v.storageLatencyMs)}</td>
+                  <td><span className={`tag ${v.storageStatus==='REMOTE_SUSPECTED'?'tag-violation':'tag-compliant'}`}>{v.storageStatus||'—'}</span></td>
                   <td className="reason-cell">{v.violationReason||v.status||'—'}</td>
                   <td className="mono hash-cell" title={v.payloadHash}>{v.payloadHash?v.payloadHash.slice(0,16)+'…':'—'}</td>
                   <td><button className="detail-btn" onClick={()=>navigate(`/servers/${v.serverID}`)}>Detail →</button></td>
@@ -56,3 +58,4 @@ export default function Violations() {
     </div>
   )
 }
+
