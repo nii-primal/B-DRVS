@@ -62,7 +62,7 @@ RTT_THRESHOLD_MS = 50.0
 #   Local development: any local path, e.g. "/tmp/bdrvs-probe"
 #   Production: a dedicated directory on the same volume as
 #     PostgreSQL's data directory, e.g. "/var/lib/postgresql/bdrvs-probe"
-STORAGE_PROBE_PATH        = "/tmp/bdrvs-probe"
+STORAGE_PROBE_PATH = "/home/nii/bdrvs-remote-mount"
 STORAGE_PROBE_SAMPLES     = 10      # read+write cycles per check-in
 STORAGE_PROBE_BLOB_BYTES  = 4096    # size of each test blob (4KB)
 
