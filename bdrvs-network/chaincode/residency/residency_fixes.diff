@@ -1,0 +1,297 @@
+--- residency.go.orig	2026-06-16 22:09:18.730807134 +0000
++++ residency.go	2026-06-16 22:11:19.034376200 +0000
+@@ -41,17 +41,20 @@
+ // ServerRecord is stored on the ledger when a health server is registered.
+ // Key: "SERVER_<serverID>"
+ type ServerRecord struct {
+-	DocType      string `json:"docType"`      // "SERVER"
+-	ServerID     string `json:"serverID"`
+-	PublicKeyPEM string `json:"publicKeyPEM"` // ECDSA P-256 public key in PEM format
+-	OwnerOrg     string `json:"ownerOrg"`     // e.g. "Lightwave Technologies"
+-	RegisteredAt string `json:"registeredAt"` // UTC timestamp
+-	Active       bool   `json:"active"`
++	DocType       string `json:"docType"` // "SERVER"
++	ServerID      string `json:"serverID"`
++	PublicKeyPEM  string `json:"publicKeyPEM"`  // ECDSA P-256 public key in PEM format
++	OwnerOrg      string `json:"ownerOrg"`      // e.g. "Lightwave Technologies"
++	RegisteredAt  string `json:"registeredAt"`  // UTC timestamp
++	LastTimestamp string `json:"lastTimestamp"` // most recent accepted check-in timestamp (replay guard)
++	Active        bool   `json:"active"`
+ }
+ 
+ // CheckInPayload is the signed packet sent by the Tier 1 Probing Agent.
+ // The agent hashes (SHA-256) the canonical string:
+-//   "<serverID>|<publicIP>|<rttMs>|<storageLatencyMs>|<storageJitterMs>|<timestamp>"
++//
++//	"<serverID>|<publicIP>|<rttMs>|<storageLatencyMs>|<storageJitterMs>|<timestamp>"
++//
+ // and signs that hash with its ECDSA private key.
+ type CheckInPayload struct {
+ 	ServerID         string  `json:"serverID"`
+@@ -66,11 +69,11 @@
+ // ResidencyRecord is the immutable record written to the ledger after each check-in.
+ // Key: "RECORD_<serverID>_<timestamp>"
+ type ResidencyRecord struct {
+-	DocType          string  `json:"docType"`          // "RECORD"
++	DocType          string  `json:"docType"` // "RECORD"
+ 	RecordID         string  `json:"recordID"`
+ 	ServerID         string  `json:"serverID"`
+-	Timestamp        string  `json:"timestamp"`        // from agent payload
+-	BlockTime        string  `json:"blockTime"`        // when committed to ledger
++	Timestamp        string  `json:"timestamp"` // from agent payload
++	BlockTime        string  `json:"blockTime"` // when committed to ledger
+ 	PublicIP         string  `json:"publicIP"`
+ 	RTTms            float64 `json:"rttMs"`
+ 	StorageLatencyMs float64 `json:"storageLatencyMs"` // Avg local storage I/O latency (ms)
+@@ -90,6 +93,7 @@
+ 	GhanaIPRanges             []string `json:"ghanaIPRanges"`
+ 	RTTThresholdMs            float64  `json:"rttThresholdMs"`
+ 	StorageLatencyThresholdMs float64  `json:"storageLatencyThresholdMs"`
++	FreshnessWindowSec        float64  `json:"freshnessWindowSec"`
+ 	UpdatedAt                 string   `json:"updatedAt"`
+ }
+ 
+@@ -144,6 +148,7 @@
+ 	"192.168.0.0/16",
+ 	"127.0.0.0/8",
+ }
++
+ // Default RTT threshold: 50ms
+ // Based on the physical limitations of fibre-optic propagation within Accra.
+ // Intra-city RTT reliably stays below 50ms; values above this strongly suggest
+@@ -159,6 +164,14 @@
+ // before production deployment.
+ const defaultStorageLatencyThresholdMs = 10.0
+ 
++// Default freshness window: 300s (5 minutes)
++// A signed check-in whose timestamp differs from the ledger transaction time by
++// more than this (in either direction) is rejected. This bounds how stale a
++// replayed payload can be while tolerating modest clock skew between the vendor
++// server and the ordering service. Tighten in production once NTP sync is
++// assured across all monitored servers.
++const defaultFreshnessWindowSec = 300.0
++
+ // =============================================================================
+ // Initialisation
+ // =============================================================================
+@@ -166,12 +179,18 @@
+ // InitLedger seeds the blockchain with default configuration (Ghana IP ranges
+ // and RTT threshold). Called once when the chaincode is instantiated.
+ func (c *ResidencyContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
++	now, err := txTimestamp(ctx)
++	if err != nil {
++		return err
++	}
++
+ 	config := NetworkConfig{
+ 		DocType:                   "CONFIG",
+ 		GhanaIPRanges:             defaultGhanaIPRanges,
+ 		RTTThresholdMs:            defaultRTTThresholdMs,
+ 		StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
+-		UpdatedAt:                 time.Now().UTC().Format(time.RFC3339),
++		FreshnessWindowSec:        defaultFreshnessWindowSec,
++		UpdatedAt:                 now.Format(time.RFC3339),
+ 	}
+ 
+ 	configJSON, err := json.Marshal(config)
+@@ -195,9 +214,10 @@
+ // public key. Only check-ins signed with this key will be accepted.
+ //
+ // Args:
+-//   serverID     — unique identifier (e.g. "LHIMS-KORLE-BU-01")
+-//   publicKeyPEM — ECDSA P-256 public key in PEM format (generated on the server)
+-//   ownerOrg     — name of the vendor organisation
++//
++//	serverID     — unique identifier (e.g. "LHIMS-KORLE-BU-01")
++//	publicKeyPEM — ECDSA P-256 public key in PEM format (generated on the server)
++//	ownerOrg     — name of the vendor organisation
+ func (c *ResidencyContract) RegisterServer(
+ 	ctx contractapi.TransactionContextInterface,
+ 	serverID string,
+@@ -218,13 +238,19 @@
+ 		return fmt.Errorf("invalid public key PEM: %w", err)
+ 	}
+ 
++	now, err := txTimestamp(ctx)
++	if err != nil {
++		return fmt.Errorf("failed to read transaction timestamp: %w", err)
++	}
++
+ 	record := ServerRecord{
+-		DocType:      "SERVER",
+-		ServerID:     serverID,
+-		PublicKeyPEM: publicKeyPEM,
+-		OwnerOrg:     ownerOrg,
+-		RegisteredAt: time.Now().UTC().Format(time.RFC3339),
+-		Active:       true,
++		DocType:       "SERVER",
++		ServerID:      serverID,
++		PublicKeyPEM:  publicKeyPEM,
++		OwnerOrg:      ownerOrg,
++		RegisteredAt:  now.Format(time.RFC3339),
++		LastTimestamp: "",
++		Active:        true,
+ 	}
+ 
+ 	recordJSON, err := json.Marshal(record)
+@@ -249,9 +275,10 @@
+ // sequence, and writes an immutable ResidencyRecord to the ledger.
+ //
+ // Validation sequence:
+-//   Step 1 — Verify ECDSA signature (proves the payload was not tampered with)
+-//   Step 2 — Check public IP against Ghana AFRINIC whitelist
+-//   Step 3 — Check RTT against domestic threshold (50ms default)
++//
++//	Step 1 — Verify ECDSA signature (proves the payload was not tampered with)
++//	Step 2 — Check public IP against Ghana AFRINIC whitelist
++//	Step 3 — Check RTT against domestic threshold (50ms default)
+ //
+ // On any failure: status = SOVEREIGNTY_VIOLATION + event emitted
+ // On full pass:   status = COMPLIANT
+@@ -317,6 +344,44 @@
+ 	}
+ 
+ 	// ──────────────────────────────────────────────────────────────────────────
++	// STEP 1b: Freshness & Replay Protection
++	// A valid signature only proves the holder of the registered key produced
++	// this payload — it does NOT prove the payload is recent. Without this guard a
++	// vendor could migrate data abroad and replay an old COMPLIANT payload forever.
++	// We therefore (a) bound the agent timestamp against the deterministic ledger
++	// transaction time, and (b) require each server's timestamps to be strictly
++	// monotonic so no previously accepted check-in can ever be resubmitted.
++	// ──────────────────────────────────────────────────────────────────────────
++	agentTime, tErr := time.Parse(time.RFC3339, payload.Timestamp)
++	if tErr != nil {
++		return nil, fmt.Errorf("invalid timestamp %q (expected RFC3339, e.g. 2026-05-12T12:00:00Z): %w", payload.Timestamp, tErr)
++	}
++
++	txTime, tsErr := txTimestamp(ctx)
++	if tsErr != nil {
++		return nil, tsErr
++	}
++
++	window := config.FreshnessWindowSec
++	if window <= 0 {
++		window = defaultFreshnessWindowSec
++	}
++	skewSec := txTime.Sub(agentTime).Seconds()
++	if skewSec > window {
++		return nil, fmt.Errorf("stale check-in rejected: timestamp %s is %.0fs older than ledger time (max %.0fs) — possible replay", payload.Timestamp, skewSec, window)
++	}
++	if skewSec < -window {
++		return nil, fmt.Errorf("future-dated check-in rejected: timestamp %s is %.0fs ahead of ledger time (max %.0fs)", payload.Timestamp, -skewSec, window)
++	}
++
++	if server.LastTimestamp != "" {
++		lastTime, lErr := time.Parse(time.RFC3339, server.LastTimestamp)
++		if lErr == nil && !agentTime.After(lastTime) {
++			return nil, fmt.Errorf("replay rejected: timestamp %s is not newer than the last accepted check-in %s for server %s", payload.Timestamp, server.LastTimestamp, payload.ServerID)
++		}
++	}
++
++	// ──────────────────────────────────────────────────────────────────────────
+ 	// STEP 2: IP Geolocation Check
+ 	// Compares the reported public IP against the AFRINIC-sourced Ghana whitelist.
+ 	// ──────────────────────────────────────────────────────────────────────────
+@@ -379,7 +444,7 @@
+ 		RecordID:         recordID,
+ 		ServerID:         payload.ServerID,
+ 		Timestamp:        payload.Timestamp,
+-		BlockTime:        time.Now().UTC().Format(time.RFC3339),
++		BlockTime:        txTime.Format(time.RFC3339),
+ 		PublicIP:         payload.PublicIP,
+ 		RTTms:            payload.RTTms,
+ 		StorageLatencyMs: payload.StorageLatencyMs,
+@@ -401,6 +466,18 @@
+ 		return nil, fmt.Errorf("failed to write residency record to ledger: %w", err)
+ 	}
+ 
++	// ── Advance the per-server replay guard ───────────────────────────────────
++	// Persist the accepted timestamp so any later check-in carrying an equal or
++	// older timestamp (e.g. a replayed COMPLIANT payload) is rejected at STEP 1b.
++	// Updated on both COMPLIANT and SOVEREIGNTY_VIOLATION outcomes so that an old
++	// compliant payload cannot be replayed to overwrite a more recent violation.
++	server.LastTimestamp = payload.Timestamp
++	if serverUpdate, mErr := json.Marshal(server); mErr == nil {
++		if err := ctx.GetStub().PutState("SERVER_"+payload.ServerID, serverUpdate); err != nil {
++			return nil, fmt.Errorf("failed to update server replay guard: %w", err)
++		}
++	}
++
+ 	// ── Emit event for dashboard real-time subscription ───────────────────────
+ 	eventName := "COMPLIANT_CHECK_IN"
+ 	if status == "SOVEREIGNTY_VIOLATION" {
+@@ -597,8 +674,12 @@
+ 		return err
+ 	}
+ 
++	now, err := txTimestamp(ctx)
++	if err != nil {
++		return err
++	}
+ 	config.RTTThresholdMs = thresholdMs
+-	config.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
++	config.UpdatedAt = now.Format(time.RFC3339)
+ 
+ 	return c.saveNetworkConfig(ctx, config)
+ }
+@@ -659,8 +740,12 @@
+ 		}
+ 	}
+ 
++	now, err := txTimestamp(ctx)
++	if err != nil {
++		return err
++	}
+ 	config.GhanaIPRanges = append(config.GhanaIPRanges, cidr)
+-	config.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
++	config.UpdatedAt = now.Format(time.RFC3339)
+ 
+ 	fmt.Printf("[B-DRVS] Ghana IP range added: %s\n", cidr)
+ 	return c.saveNetworkConfig(ctx, config)
+@@ -705,6 +790,7 @@
+ 			GhanaIPRanges:             defaultGhanaIPRanges,
+ 			RTTThresholdMs:            defaultRTTThresholdMs,
+ 			StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
++			FreshnessWindowSec:        defaultFreshnessWindowSec,
+ 		}, nil
+ 	}
+ 
+@@ -751,8 +837,9 @@
+ // the canonical payload string using the server's registered ECDSA P-256 key.
+ //
+ // The Python probing agent signs with:
+-//   from cryptography.hazmat.primitives.asymmetric import ec
+-//   signature = private_key.sign(message.encode(), ec.ECDSA(hashes.SHA256()))
++//
++//	from cryptography.hazmat.primitives.asymmetric import ec
++//	signature = private_key.sign(message.encode(), ec.ECDSA(hashes.SHA256()))
+ //
+ // This produces a DER-encoded signature which we decode and verify here.
+ func verifyECDSASignature(publicKeyPEM, message, signatureB64 string) (bool, error) {
+@@ -784,6 +871,20 @@
+ 	return valid, nil
+ }
+ 
++// txTimestamp returns the transaction's deterministic timestamp as a UTC time.
++// Chaincode MUST NOT use time.Now() for values written to the ledger: it runs
++// independently on every endorsing peer (MoH and NITA), so wall-clock reads
++// would differ between them and produce mismatched read/write sets and
++// non-deterministic endorsement failures. GetTxTimestamp() is fixed by the
++// submitting client and identical across all endorsers.
++func txTimestamp(ctx contractapi.TransactionContextInterface) (time.Time, error) {
++	ts, err := ctx.GetStub().GetTxTimestamp()
++	if err != nil {
++		return time.Time{}, fmt.Errorf("failed to read transaction timestamp: %w", err)
++	}
++	return time.Unix(ts.GetSeconds(), int64(ts.GetNanos())).UTC(), nil
++}
++
+ // parsePEMPublicKey decodes a PEM-encoded ECDSA public key.
+ func parsePEMPublicKey(pemStr string) (*ecdsa.PublicKey, error) {
+ 	block, _ := pem.Decode([]byte(pemStr))
+@@ -803,4 +904,3 @@
+ 
+ 	return ecPub, nil
+ }
+-
