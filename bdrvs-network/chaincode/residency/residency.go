@@ -84,6 +84,9 @@ type ResidencyRecord struct {
 	Status           string  `json:"status"`           // "COMPLIANT" | "SOVEREIGNTY_VIOLATION"
 	ViolationReason  string  `json:"violationReason"`  // empty if compliant
 	PayloadHash      string  `json:"payloadHash"`      // SHA-256 of the signed payload string
+	MeasuredBy       string  `json:"measuredBy"`       // "AGENT_SELF_REPORT" | "VERIFIER"
+	VerifierID       string  `json:"verifierID"`       // attesting verifier (verifier path only)
+	Nonce            string  `json:"nonce"`            // challenge nonce (verifier path only)
 }
 
 // NetworkConfig holds the adjustable residency rules stored on the ledger.
@@ -94,6 +97,7 @@ type NetworkConfig struct {
 	RTTThresholdMs            float64  `json:"rttThresholdMs"`
 	StorageLatencyThresholdMs float64  `json:"storageLatencyThresholdMs"`
 	FreshnessWindowSec        float64  `json:"freshnessWindowSec"`
+	SelfReportEnabled         bool     `json:"selfReportEnabled"`
 	UpdatedAt                 string   `json:"updatedAt"`
 }
 
@@ -190,6 +194,7 @@ func (c *ResidencyContract) InitLedger(ctx contractapi.TransactionContextInterfa
 		RTTThresholdMs:            defaultRTTThresholdMs,
 		StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
 		FreshnessWindowSec:        defaultFreshnessWindowSec,
+		SelfReportEnabled:         true,
 		UpdatedAt:                 now.Format(time.RFC3339),
 	}
 
@@ -318,6 +323,14 @@ func (c *ResidencyContract) SubmitCheckIn(
 	config, err := c.getNetworkConfig(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// ── Trust-model gate ──────────────────────────────────────────────────────
+	// When self-report is disabled (recommended for production), the only path a
+	// vendor agent has is to answer a Verifier's challenge. This closes the bypass
+	// where a dishonest vendor submits fabricated IP/RTT values directly.
+	if !config.SelfReportEnabled {
+		return nil, fmt.Errorf("self-reported check-ins are disabled on this network; use the verifier challenge-response path (SubmitVerifiedCheckIn)")
 	}
 
 	// ── Build the canonical payload string (same format as agent signing) ─────
@@ -455,6 +468,7 @@ func (c *ResidencyContract) SubmitCheckIn(
 		Status:           status,
 		ViolationReason:  violationReason,
 		PayloadHash:      payloadHash,
+		MeasuredBy:       "AGENT_SELF_REPORT",
 	}
 
 	recordJSON, err := json.Marshal(record)
@@ -751,6 +765,27 @@ func (c *ResidencyContract) AddGhanaIPRange(
 	return c.saveNetworkConfig(ctx, config)
 }
 
+// SetSelfReportEnabled toggles whether legacy self-reported check-ins
+// (SubmitCheckIn) are accepted. Production deployments should set this to false
+// so that only verifier-attested challenge-response check-ins are recorded.
+func (c *ResidencyContract) SetSelfReportEnabled(
+	ctx contractapi.TransactionContextInterface,
+	enabled bool,
+) error {
+	now, err := txTimestamp(ctx)
+	if err != nil {
+		return err
+	}
+	config, err := c.getNetworkConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config.SelfReportEnabled = enabled
+	config.UpdatedAt = now.Format(time.RFC3339)
+	fmt.Printf("[B-DRVS] Self-report check-ins enabled = %v\n", enabled)
+	return c.saveNetworkConfig(ctx, config)
+}
+
 // DeactivateServer marks a server as inactive so its check-ins are rejected.
 func (c *ResidencyContract) DeactivateServer(
 	ctx contractapi.TransactionContextInterface,
@@ -791,6 +826,7 @@ func (c *ResidencyContract) getNetworkConfig(
 			RTTThresholdMs:            defaultRTTThresholdMs,
 			StorageLatencyThresholdMs: defaultStorageLatencyThresholdMs,
 			FreshnessWindowSec:        defaultFreshnessWindowSec,
+			SelfReportEnabled:         true,
 		}, nil
 	}
 
