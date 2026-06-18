@@ -33,7 +33,7 @@ OWNER_ORG  = "Demo Vendor Org"     # Vendor organisation name
 # Production: set to the IP of a fixed NITA-operated endpoint in Accra, e.g.:
 #   VERIFIER_HOST = "196.6.10.1"   # hypothetical NITA Accra endpoint
 #   VERIFIER_PORT = 443
-VERIFIER_HOST       = "peer0.nita.bdrvs.gh"  # Docker service name (dev only)
+VERIFIER_HOST = "localhost"
 VERIFIER_PORT       = 9051                    # open port on verifier host
 VERIFIER_PING_COUNT = 5                       # RTT samples to average
 

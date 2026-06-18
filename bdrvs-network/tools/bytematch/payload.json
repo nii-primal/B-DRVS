@@ -1,0 +1,13 @@
+{
+  "fields": {
+    "server_id": "LHIMS-KORLE-BU-01",
+    "ip": "154.161.12.34",
+    "rtt_ms": "12",
+    "timestamp": "2026-06-18T11:00:00Z",
+    "nonce": "b3f1c9a27e5d40128a6f0e7c91d2ab34"
+  },
+  "signature_b64": "MEUCIQDJI9dNOSvMkl4Rlf67aYHomg8hnjSLn99ep/xijti2TgIgFua9xwuJ2Z9h+j9A9XLUQBumV/VpbIBADdT4jjkpZug=",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHaADU59IX7vK5igaJJulgry+ZIb3\nMX/+wDAevA/PO5mrzv+9XAa1PxvdeLPyy8XIfLJ6GvGLqyfGzvQf/zhBFg==\n-----END PUBLIC KEY-----\n",
+  "_debug_canonical_hex": "4c48494d532d4b4f524c452d42552d30311f3135342e3136312e31322e33341f31321f323032362d30362d31385431313a30303a30305a1f6233663163396132376535643430313238613666306537633931643261623334",
+  "_debug_sha256_hex": "f6077ba95ab4e5a100374f3d63c1938c2d121c1412c77212df0c522c0ab4c087"
+}
