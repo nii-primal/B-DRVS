@@ -78,7 +78,6 @@ The prototype proves the concept. To take it from a demo to something the Minist
 
 ## Project structure
 
-> _Update this section to match the actual folders in the repo._
 
 ```
 /agent        # Tier 1 — Python probing agent
