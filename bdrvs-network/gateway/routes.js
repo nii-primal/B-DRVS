@@ -127,5 +127,62 @@ router.get("/health", async (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+// =============================================================================
+// B-DRVS verified-path routes — ADD THESE to gateway/routes.js
+//
+// Paste both blocks into routes.js immediately ABOVE the line:
+//     module.exports = router;
+//
+// They mirror the existing /register and /checkin routes exactly; the only
+// differences are the chaincode functions they call (RegisterVerifier and
+// SubmitVerifiedCheckIn) and the field names they log.
+// =============================================================================
+
+// POST /api/register-verifier  — register a government Verifier (NITA) key
+router.post("/register-verifier",
+  [body("verifierID").notEmpty(), body("publicKeyPEM").notEmpty(), body("location").notEmpty()],
+  async (req, res) => {
+    if (validate(req, res)) return;
+    const { verifierID, publicKeyPEM, location } = req.body;
+    logger.info(`[register-verifier] verifierID=${verifierID}`);
+    try {
+      await invokeChaincode("RegisterVerifier", [verifierID, publicKeyPEM, location]);
+      return res.status(200).json({ success: true, verifierID });
+    } catch (err) {
+      if (err.message && err.message.includes("already registered"))
+        return res.status(409).json({ success: false, message: `${verifierID} already registered` });
+      logger.error(`[register-verifier] ${err.message}`);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// POST /api/verified-checkin  — submit a verifier-attested check-in
+router.post("/verified-checkin",
+  [body("payload").notEmpty()],
+  async (req, res) => {
+    if (validate(req, res)) return;
+    const { payload } = req.body;
+    let parsed;
+    try { parsed = JSON.parse(payload); } catch { return res.status(400).json({ error: "payload must be valid JSON" }); }
+    logger.info(`[verified-checkin] serverID=${parsed.serverID} verifier=${parsed.verifierID} ip=${parsed.observedIP} rtt=${parsed.measuredRttMs}ms`);
+    try {
+      const result = await invokeChaincode("SubmitVerifiedCheckIn", [payload]);
+      // same result shape as /checkin — a ResidencyRecord in the invoke output
+      const match = result.match(/result: status:200 payload:"(.+)"/);
+      if (match) {
+        const record = JSON.parse(match[1].replace(/\\"/g, '"'));
+        if (record.status === "SOVEREIGNTY_VIOLATION")
+          logger.warn(`[verified-checkin] 🚨 VIOLATION — ${record.violationReason}`);
+        else logger.info(`[verified-checkin] ✅ COMPLIANT — ${record.recordID}`);
+        return res.status(200).json(record);
+      }
+      return res.status(200).json({ success: true, raw: result });
+    } catch (err) {
+      logger.error(`[verified-checkin] ${err.message}`);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
 
 module.exports = router;
