@@ -123,6 +123,9 @@ var defaultGhanaIPRanges = []string{
 	"41.189.160.0/19",
 	"154.120.0.0/17",
 	"154.120.128.0/17",
+	// BGP route 154.161.0.0/17 (parent 154.160.0.0 - 154.175.255.255, netname GH-SPACEFON).
+	// AFRINIC RDAP/WHOIS validated, origin AS30986. June 2026.
+	"154.161.0.0/17",
 
 	// ── Airtel Ghana Limited (AS37030) ────────────────────────────────────────
 	"41.189.192.0/18",

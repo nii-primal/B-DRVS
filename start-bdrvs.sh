@@ -33,8 +33,8 @@ COMPOSE_FILE="${NETWORK_DIR}/compose/docker-compose.yaml"
 STEPS_PASSED=0
 STEPS_FAILED=0
 
-pass() { info "$1"; ((STEPS_PASSED++)); }
-fail() { error "$1"; ((STEPS_FAILED++)); }
+pass() { info "$1"; ((++STEPS_PASSED)); }
+fail() { error "$1"; ((++STEPS_FAILED)); }
 
 # =============================================================================
 # SECTION 1 — Git & Repository

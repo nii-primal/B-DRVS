@@ -37,10 +37,10 @@ func newMockStub(t time.Time) *mockStub {
 func (m *mockStub) setTxTime(t time.Time) {
 	m.ts = &timestamp.Timestamp{Seconds: t.Unix(), Nanos: int32(t.Nanosecond())}
 }
-func (m *mockStub) GetState(k string) ([]byte, error)            { return m.state[k], nil }
-func (m *mockStub) PutState(k string, v []byte) error            { m.state[k] = v; return nil }
+func (m *mockStub) GetState(k string) ([]byte, error)             { return m.state[k], nil }
+func (m *mockStub) PutState(k string, v []byte) error             { m.state[k] = v; return nil }
 func (m *mockStub) GetTxTimestamp() (*timestamp.Timestamp, error) { return m.ts, nil }
-func (m *mockStub) SetEvent(n string, p []byte) error            { m.events[n] = p; return nil }
+func (m *mockStub) SetEvent(n string, p []byte) error             { m.events[n] = p; return nil }
 
 type mockCtx struct {
 	contractapi.TransactionContextInterface
