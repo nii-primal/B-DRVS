@@ -147,13 +147,6 @@ var defaultGhanaIPRanges = []string{
 	// Included as NITA verifier node may be co-hosted on academic infrastructure
 	"196.216.240.0/22",
 
-	// ── Private / RFC-1918 ranges — local development only ───────────────────
-	// These allow the prototype to run on a single developer machine.
-	// REMOVE THESE IN PRODUCTION — private IPs prove nothing about location.
-	"10.0.0.0/8",
-	"172.16.0.0/12",
-	"192.168.0.0/16",
-	"127.0.0.0/8",
 }
 
 // Default RTT threshold: 50ms
@@ -403,6 +396,22 @@ func (c *ResidencyContract) SubmitCheckIn(
 	// ──────────────────────────────────────────────────────────────────────────
 	ipStatus := "GHANA"
 	var violationReasons []string
+
+	// ──────────────────────────────────────────────────────────────────────────
+	// STEP 2a: Source IP sanity guard
+	// A public geolocation lookup must never return a private, loopback, or
+	// otherwise non-routable address. If it does, the probe is misconfigured
+	// or its input was tampered with — this is INVALID INPUT, not evidence of
+	// foreign hosting. We reject it outright so the immutable ledger never
+	// conflates an agent malfunction with a genuine sovereignty violation.
+	// ──────────────────────────────────────────────────────────────────────────
+	parsedIP := net.ParseIP(payload.PublicIP)
+	if parsedIP == nil {
+		return nil, fmt.Errorf("invalid source IP %q: not a parseable address", payload.PublicIP)
+	}
+	if parsedIP.IsPrivate() || parsedIP.IsLoopback() || parsedIP.IsLinkLocalUnicast() || parsedIP.IsUnspecified() {
+		return nil, fmt.Errorf("INVALID_INPUT: source IP %s is non-routable (private/loopback/link-local); a public lookup cannot legitimately return this", payload.PublicIP)
+	}
 
 	inGhana, ipErr := isIPInGhana(payload.PublicIP, config.GhanaIPRanges)
 	if ipErr != nil {
