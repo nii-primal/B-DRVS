@@ -37,24 +37,46 @@ async function queryChaincode(fcn, args = []) {
 }
 
 // ── Invoke (read-write) ───────────────────────────────────────────────────────
+// Pulls the chaincode's own error message out of a peer invoke failure.
+// A failed invoke embeds the chaincode error as: message:"<reason>"
+// Surfaced as a chaincode-level rejection so routes can return 400, not 500.
+function extractChaincodeError(rawStderr) {
+  const m = rawStderr.match(/message:"((?:[^"\\]|\\.)*)"/);
+  if (m) return m[1].replace(/\\"/g, '"');
+  return null;
+}
+
 async function invokeChaincode(fcn, args = []) {
   const payload = JSON.stringify({ function: fcn, Args: args });
   const cmd = `docker exec bdrvs_cli peer chaincode invoke \
-    -o orderer.bdrvs.gh:7050 \
-    --channelID ${CHANNEL} \
-    --name ${CHAINCODE} \
-    --tls --cafile ${ORDERER_CA} \
-    --peerAddresses ${MOH_PEER}  --tlsRootCertFiles ${MOH_TLS_CA} \
-    --peerAddresses ${NITA_PEER} --tlsRootCertFiles ${NITA_TLS_CA} \
-    -c ${shellEscape(payload)}`;
+-o orderer.bdrvs.gh:7050 \
+--channelID ${CHANNEL} \
+--name ${CHAINCODE} \
+--tls --cafile ${ORDERER_CA} \
+--peerAddresses ${MOH_PEER}  --tlsRootCertFiles ${MOH_TLS_CA} \
+--peerAddresses ${NITA_PEER} --tlsRootCertFiles ${NITA_TLS_CA} \
+-c ${shellEscape(payload)}`;
 
   logger.debug(`[fabric] invoke: ${fcn}(${args.join(", ")})`);
-  const { stdout, stderr } = await execAsync(cmd);
-
-  // peer chaincode invoke prints the result to stderr
-  const combined = stdout.trim() + stderr.trim();
-  logger.debug(`[fabric] invoke result: ${combined}`);
-  return combined;
+  try {
+    const { stdout, stderr } = await execAsync(cmd);
+    const combined = stdout.trim() + stderr.trim();
+    logger.debug(`[fabric] invoke result: ${combined}`);
+    return combined;
+  } catch (execErr) {
+    const rawStderr = (execErr.stderr || "") + (execErr.stdout || "");
+    const ccMsg = extractChaincodeError(rawStderr);
+    if (ccMsg) {
+      logger.warn(`[fabric] chaincode rejected ${fcn}: ${ccMsg}`);
+      const e = new Error(ccMsg);
+      e.chaincodeRejection = true;
+      throw e;
+    }
+    logger.error(`[fabric] invoke infra failure for ${fcn}: ${rawStderr.slice(0, 500)}`);
+    const e = new Error("blockchain network error — invoke could not complete");
+    e.infraFailure = true;
+    throw e;
+  }
 }
 
 // ── Health check ──────────────────────────────────────────────────────────────

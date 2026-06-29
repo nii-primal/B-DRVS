@@ -54,6 +54,8 @@ router.post("/checkin",
       }
       return res.status(200).json({ success: true, raw: result });
     } catch (err) {
+      if (err.chaincodeRejection)
+        return res.status(400).json({ error: err.message, rejected: true });
       logger.error(`[checkin] ${err.message}`);
       return res.status(500).json({ error: err.message });
     }
@@ -179,6 +181,8 @@ router.post("/verified-checkin",
       }
       return res.status(200).json({ success: true, raw: result });
     } catch (err) {
+      if (err.chaincodeRejection)
+        return res.status(400).json({ error: err.message, rejected: true });
       logger.error(`[verified-checkin] ${err.message}`);
       return res.status(500).json({ error: err.message });
     }
