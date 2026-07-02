@@ -2,11 +2,10 @@
 
 **Continuous, tamper-evident, independently verifiable proof of where a health server actually sits — built for Ghana.**
 
-Final-year BSc Cybersecurity project · University of Mines and Technology (UMaT), Tarkwa, Ghana · 2026
 
 ---
 
-## The Story (Why This Exists)
+## Why This Exists
 
 In 2025, Ghana's Ministry of Health and a private health-IT vendor, Lightwave, got into a public dispute over a simple question:
 
@@ -26,7 +25,7 @@ Instead of trusting the vendor's word or a once-a-year audit, B-DRVS **continuou
 
 ---
 
-## How It Works (For a Non-Technical Reader)
+## How It Works 
 
 Think of it like a tamper-proof GPS tracker for servers — except servers don't have GPS, so we use physics and network records instead:
 
@@ -202,21 +201,15 @@ The monitored server runs `verified_responder.py` (ideally as a systemd service)
 
 ## Team
 
-Department of Cybersecurity and Information Systems, Faculty of Computing and Mathematical Sciences, UMaT Tarkwa:
-
 - Ahinakwa Eugene Nii Okai
 - Boateng Theophilus Oware
 - Arthur Cephas Ebo
 - Tengviel Edwin Daaro
 - Sowah Arnold Nii Adjetey
 
-**Supervisor:** Mr. Mohammed Yussif Umaru
 
 ## Legal Context
 
 - Data Protection Act, 2012 (Act 843) — Ghana
 - Cybersecurity Act, 2020 (Act 1038) — Ghana
 
-## License
-
-*(Add your chosen license here — e.g. MIT or Apache-2.0.)*
